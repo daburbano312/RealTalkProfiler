@@ -1,0 +1,1 @@
+from interfaces.emotion_detection.emotion_detector import EmotionType

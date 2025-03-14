@@ -1,0 +1,29 @@
+# Paquetes principales
+Flask==3.0.2
+Flask-Cors==4.0.0
+gevent-websocket==0.10.1
+python-dotenv==1.0.0
+
+# Procesamiento de audio
+vosk==0.3.45
+pyaudio==0.2.13
+soundfile==0.12.1
+numpy==1.26.4
+scipy==1.13.0
+
+# Analisis de emociones
+pysentimiento==0.7.1
+
+# OpenAI
+openai==1.12.0
+
+# Procesamiento de datos
+openpyxl==3.1.2
+pandas==2.2.1
+
+# Whisper (transcripción alternativa)
+openai-whisper==20231117
+
+# Otras dependencias
+requests==2.31.0
+python-slugify==8.0.4
