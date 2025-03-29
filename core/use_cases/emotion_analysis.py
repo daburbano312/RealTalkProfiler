@@ -1,65 +1,25 @@
-# core/use_cases/emotion_analysis.py
-from typing import Tuple, Optional
-from ..entities import EmotionAnalysis, Transcription
-from interfaces.emotion_detection import EmotionDetector
+from infrastructure.emotion.vokaturi_detector import VokaturiEmotionDetector
+from infrastructure.emotion.openai_text_emotion_detector import OpenAITextEmotionDetector
+from core.entities.emotion import EmotionAnalysis, EmotionType
 
 class EmotionAnalysisUseCase:
-    def __init__(self, detector: EmotionDetector):
-        self.detector = detector
-        self._validation_threshold = 0.85  # Umbral de confianza mínimo
-    
-    def analyze_audio(self, audio_data: bytes) -> EmotionAnalysis:
-        """
-        Analiza un fragmento de audio y devuelve el análisis de emociones
-        con validación de calidad del resultado
-        """
-        if not audio_data:
-            raise ValueError("Datos de audio no pueden estar vacíos")
-        
-        raw_analysis = self.detector.analyze(audio_data)
-        validated_analysis = self._validate_analysis(raw_analysis)
-        
-        return validated_analysis
-    
-    def analyze_transcription(self, transcription: Transcription) -> EmotionAnalysis:
-        """
-        Realiza análisis de emociones a partir de una transcripción existente
-        aplicando reglas de negocio específicas
-        """
-        if transcription.confidence and transcription.confidence < 0.7:
-            raise LowConfidenceError("La confianza de la transcripción es demasiado baja")
-        
-        return self.detector.analyze_text(transcription.text)
-    
-    def _validate_analysis(self, analysis: EmotionAnalysis) -> EmotionAnalysis:
-        """Aplica reglas de validación de calidad del análisis"""
-        total = sum([
-            analysis.neutrality_prob,
-            analysis.happiness_prob,
-            analysis.anger_prob,
-            analysis.unidentified_prob
-        ])
-        
-        if abs(total - 1.0) > 0.01:
-            raise InvalidAnalysisError("Las probabilidades no suman 1")
-        
-        if max([
-            analysis.neutrality_prob,
-            analysis.happiness_prob,
-            analysis.anger_prob
-        ]) < self._validation_threshold:
-            analysis = analysis._replace(
-                unidentified_prob=1 - sum([
-                    analysis.neutrality_prob,
-                    analysis.happiness_prob,
-                    analysis.anger_prob
-                ])
-            )
-        
-        return analysis
+    def __init__(self):
+        self.audio_detector = VokaturiEmotionDetector()
+        self.text_detector = OpenAITextEmotionDetector()
 
-class LowConfidenceError(Exception):
-    """Error personalizado para confianza baja en transcripción"""
+    def analyze_audio_and_text(self, audio_data: bytes, text: str) -> EmotionAnalysis:
+        audio_emotion = self.audio_detector.analyze_audio(audio_data)
+        text_emotion = self.text_detector.analyze_text(text)
 
-class InvalidAnalysisError(Exception):
-    """Error para análisis que no cumple requisitos de calidad"""
+        # Prioridad a la emoción del texto (OpenAI), más precisa.
+        predominant_emotion = text_emotion.emotion_type if text_emotion.emotion_type != EmotionType.UNIDENTIFIED else audio_emotion.emotion_type
+
+        final_analysis = EmotionAnalysis(
+            emotion_type=predominant_emotion,
+            neutrality_prob=(audio_emotion.neutrality_prob + text_emotion.neutrality_prob) / 2,
+            happiness_prob=(audio_emotion.happiness_prob + text_emotion.happiness_prob) / 2,
+            anger_prob=(audio_emotion.anger_prob + text_emotion.anger_prob) / 2,
+            unidentified_prob=0.0
+        )
+
+        return final_analysis

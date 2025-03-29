@@ -1,111 +1,55 @@
-# infrastructure/emotion/vokaturi_detector.py
-import Vokaturi
+from infrastructure.emotion import Vokaturi
+from interfaces.emotion_detection.emotion_interface import EmotionDetectionInterface
+from core.entities.emotion import EmotionAnalysis, EmotionType
+from config.settings import settings
+from pathlib import Path
 import numpy as np
-import logging
-from typing import Dict
-from datetime import datetime
-from interfaces.emotion_detection import (
-    EmotionDetector,
-    EmotionDetectionResult,
-    EmotionType,
-    EmotionDetectionError,
-    InvalidAudioDataError
-)
+import ctypes
 
-class VokaturiEmotionDetector(EmotionDetector):
-    def __init__(self, sample_rate: int = 44100, buffer_length: int = 1024, dll_path: str = ""):
-        super().__init__()
-        self.sample_rate = sample_rate
-        self.buffer_length = buffer_length
-        self._voice = None
-        self._load_library(dll_path)
+class VokaturiEmotionDetector(EmotionDetectionInterface):
+    def __init__(self):
+        dll_path = str(settings.VOKATURI_DLL_PATH)
+        if not Path(dll_path).exists():
+            raise FileNotFoundError(f"No se encontró la DLL de Vokaturi en: {dll_path}")
+        Vokaturi.load(dll_path)
 
-    def _load_library(self, dll_path: str):
-        try:
-            Vokaturi.load(dll_path)
-            self._voice = Vokaturi.Voice(
-                self.sample_rate,
-                self.buffer_length,
-                True
-            )
-        except Exception as e:
-            raise EmotionDetectionError(f"Error loading Vokaturi library: {str(e)}")
+    def analyze_audio(self, audio_data: bytes) -> EmotionAnalysis:
+        # Convertimos los bytes a int16
+        audio_array = np.frombuffer(audio_data, dtype=np.int16)
 
-    def analyze_audio(self, audio_data: bytes, sample_rate: int = None) -> EmotionDetectionResult:
-        sample_rate = sample_rate or self.sample_rate
-        self._validate_audio_input(audio_data, sample_rate)
+        if len(audio_array) == 0:
+            raise ValueError("El audio recibido está vacío o no se pudo procesar.")
 
-        try:
-            audio_array = np.frombuffer(audio_data, dtype=np.float32)
-            self._voice.fill_float32array(len(audio_array), audio_array)
-            
-            quality = Vokaturi.Quality()
-            probabilities = Vokaturi.EmotionProbabilities()
-            self._voice.extract(quality, probabilities)
-            
-            if not quality.valid:
-                raise InvalidAudioDataError("Audio quality insufficient for analysis")
-            
-            return self._create_result(probabilities, len(audio_data) / sample_rate)
-            
-        except Exception as e:
-            logging.error(f"Vokaturi analysis failed: {str(e)}")
-            raise EmotionDetectionError("Emotion detection failed") from e
+        # Inicializamos Vokaturi Voice
+        voice = Vokaturi.Voice(settings.AUDIO_SAMPLE_RATE, len(audio_array), False)
 
-    def analyze_text(self, text: str, language: str = 'es') -> EmotionDetectionResult:
-        raise NotImplementedError("Vokaturi detector only supports audio analysis")
+        # Convertimos numpy array a puntero C válido
+        c_array = audio_array.ctypes.data_as(ctypes.POINTER(ctypes.c_short))
 
-    def get_supported_emotions(self) -> tuple:
-        return (
-            EmotionType.NEUTRAL,
-            EmotionType.HAPPY,
-            EmotionType.SAD,
-            EmotionType.ANGRY,
-            EmotionType.FEAR
+        # Llenamos el buffer de Vokaturi con el puntero al array
+        voice.fill_int16array(len(audio_array), c_array)
+
+        # Analizamos la emoción
+        quality = Vokaturi.Quality()
+        emotion_probs = Vokaturi.EmotionProbabilities()
+        voice.extract(quality, emotion_probs)
+        voice.destroy()
+
+        return EmotionAnalysis(
+            emotion_type=self._get_predominant_emotion(emotion_probs),
+            neutrality_prob=emotion_probs.neutrality,
+            happiness_prob=emotion_probs.happiness,
+            anger_prob=emotion_probs.anger,
+            unidentified_prob=emotion_probs.fear
         )
 
-    def get_detector_metadata(self) -> Dict:
-        return {
-            "detector_type": "audio",
-            "version": Vokaturi.versionAndLicense(),
-            "sample_rate": self.sample_rate,
-            "buffer_length": self.buffer_length
+    def analyze_text(self, text: str) -> EmotionAnalysis:
+        raise NotImplementedError("Este detector solo analiza audio.")
+
+    def _get_predominant_emotion(self, probs):
+        emotions = {
+            EmotionType.NEUTRAL: probs.neutrality,
+            EmotionType.HAPPY: probs.happiness,
+            EmotionType.ANGRY: probs.anger
         }
-
-    def _create_result(self, probabilities, duration: float) -> EmotionDetectionResult:
-        emotion_probs = {
-            EmotionType.NEUTRAL: probabilities.neutrality,
-            EmotionType.HAPPY: probabilities.happiness,
-            EmotionType.SAD: probabilities.sadness,
-            EmotionType.ANGRY: probabilities.anger,
-            EmotionType.FEAR: probabilities.fear
-        }
-        
-        predominant = max(emotion_probs, key=emotion_probs.get)
-        
-        return EmotionDetectionResult(
-            predominant_emotion=predominant,
-            emotion_probabilities=emotion_probs,
-            audio_duration=duration,
-            confidence=emotion_probs[predominant],
-            detector_version=self.get_detector_metadata()["version"]
-        )
-
-    def get_detector_type(self) -> str:
-        return "audio"
-
-    # **Métodos agregados para corregir el error**
-    def get_supported_languages(self) -> tuple:
-        """Devuelve los idiomas soportados para análisis de texto"""
-        return ("es", "en")  # Agrega los idiomas realmente soportados
-
-    @property
-    def supported_emotions(self) -> tuple:
-        """Devuelve la lista de emociones soportadas"""
-        return (
-            EmotionType.NEUTRAL,
-            EmotionType.HAPPY,
-            EmotionType.SAD,
-            EmotionType.ANGRY,
-            EmotionType.FEAR
-        )
+        return max(emotions, key=emotions.get)

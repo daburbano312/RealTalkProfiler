@@ -1,44 +1,29 @@
-# core/use_cases/audio_processing.py
-import logging
-from typing import List, Tuple
-from ..entities import Transcription
-from interfaces.audio import SpeechToText
+from infrastructure.audio.audio_recorder import PyAudioRecorder
+from infrastructure.audio.vosk_speech_to_text import VoskSpeechToText
+from core.entities.transcription import Transcription
+from core.use_cases.emotion_analysis import EmotionAnalysisUseCase
+from datetime import datetime
 
 class AudioProcessingUseCase:
-    def __init__(self, stt_service: SpeechToText):
-        self.stt_service = stt_service
-        self.logger = logging.getLogger(__name__)
-    
-    def process_audio(self, audio_data: bytes) -> Transcription:
-        """Procesa audio completo y devuelve transcripción con metadatos"""
-        try:
-            result = self.stt_service.transcribe(audio_data)
-            return self._create_transcription_object(result)
-        except Exception as e:
-            self.logger.error(f"Error en procesamiento de audio: {str(e)}")
-            raise AudioProcessingError("Falló el procesamiento de audio") from e
-    
-    def process_streaming_audio(self, audio_chunks: List[bytes]) -> Tuple[List[Transcription], float]:
-        """Procesa audio en streaming con gestión de contexto"""
-        transcriptions = []
-        total_duration = 0.0
-        
-        for chunk in audio_chunks:
-            transcription = self.stt_service.transcribe(chunk)
-            total_duration += transcription.audio_duration
-            transcriptions.append(transcription)
-        
-        return transcriptions, total_duration
-    
-    def _create_transcription_object(self, raw_result: dict) -> Transcription:
-        """Factory method para crear objeto Transcription validado"""
-        return Transcription(
-            text=raw_result['text'],
-            emotion_analysis=raw_result.get('emotion_analysis'),
-            audio_duration=raw_result['duration'],
-            confidence=raw_result.get('confidence', 0.0),
-            audio_source=raw_result.get('source')
-        )
+    def __init__(self):
+        self.recorder = PyAudioRecorder()
+        self.stt_service = VoskSpeechToText()
+        self.emotion_analysis_use_case = EmotionAnalysisUseCase()
 
-class AudioProcessingError(Exception):
-    """Error personalizado para fallos en procesamiento de audio"""
+    def process_audio(self) -> Transcription:
+        self.recorder.start_recording()
+        print("Grabando audio... Presiona Enter para detener.")
+        input()
+        self.recorder.stop_recording()
+
+        audio_data = self.recorder.get_full_recording()
+        text = self.stt_service.transcribe(audio_data)
+        emotion_analysis = self.emotion_analysis_use_case.analyze_audio_and_text(audio_data, text)
+
+        transcription = Transcription(
+            text=text,
+            emotion_analysis=emotion_analysis,
+            audio_duration=len(audio_data) / (self.recorder.rate * 2),
+            timestamp=datetime.now()
+        )
+        return transcription
