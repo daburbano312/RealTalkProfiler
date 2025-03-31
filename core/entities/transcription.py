@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 from .emotion import EmotionAnalysis
@@ -8,7 +8,7 @@ class Transcription:
     text: str
     emotion_analysis: EmotionAnalysis
     audio_duration: float
-    timestamp: datetime = datetime.now()
+    timestamp: datetime = field(default_factory=datetime.now)
     confidence: Optional[float] = None
 
     def to_dict(self):
