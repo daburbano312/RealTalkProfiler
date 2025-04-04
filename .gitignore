@@ -16,4 +16,6 @@ __pycache__/
 # Otros
 *.DS_Store
 .env
+venv
+.vscode/
 

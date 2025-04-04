@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>RealTalk Profiler</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 2rem;
+        }
+
+        #output {
+            font-size: 1.2em;
+            background-color: #f9f9f9;
+            padding: 1rem;
+            border: 1px solid #ccc;
+            min-height: 150px;
+            white-space: pre-wrap;
+            margin-bottom: 2rem;
+        }
+
+        #emotionOutput {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 2rem;
+        }
+
+        #keywordsOutput {
+            font-size: 1.2em;
+            color: #007acc;
+            background-color: #eef6fb;
+            padding: 0.8rem;
+            border-left: 4px solid #007acc;
+            margin-bottom: 2rem;
+        }
+
+        #suggestionOutput {
+            font-size: 1.1em;
+            background-color: #fef7e0;
+            padding: 1rem;
+            border-left: 4px solid #f1c40f;
+            color: #4d3900;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧠 Transcripción en vivo</h1>
+    <div id="output"></div>
+
+    <h2>🎭 Emoción detectada:</h2>
+    <div id="emotionOutput">Analizando…</div>
+
+    <h2>🔑 Palabras clave detectadas:</h2>
+    <div id="keywordsOutput">Esperando palabras clave…</div>
+
+    <!-- ✅ Nueva sección añadida -->
+    <h2>📢 Recomendación para el asesor:</h2>
+    <div id="suggestionOutput">Esperando sugerencia…</div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>
