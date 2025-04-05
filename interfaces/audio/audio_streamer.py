@@ -11,6 +11,7 @@ class AudioStreamer:
                                   channels=1,
                                   rate=16000,
                                   input=True,
+                                  input_device_index=1,
                                   frames_per_buffer=4000,
                                   stream_callback=self._callback)
         self.stream.start_stream()

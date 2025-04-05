@@ -12,12 +12,10 @@ from infrastructure.ai.openai_recommendation_engine import OpenAIRecommendationE
 from dotenv import load_dotenv
 load_dotenv()
 
-
 # 🧠 Módulos de análisis
 text_emotion_analyzer = TextEmotionAnalyzer()
 keyword_extractor = KeywordExtractor()
 openai_api_key = os.getenv("OPENAI_API_KEY")  # Asegúrate de definir esta variable de entorno
-
 
 if not openai_api_key:
     raise ValueError("❌ No se encontró la variable de entorno OPENAI_API_KEY. Verifica tu archivo .env o el entorno.")
@@ -31,16 +29,23 @@ MAX_EMOTION_WORDS = 15
 app = Flask(__name__,
             template_folder="presentation/web/templates",
             static_folder="presentation/web/static")
-
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # 🔤 Transcripción
 speech_to_text = VoskSpeechToText()
 transcriber = TranscriptionUseCase(speech_to_text)
 
+# Variable global para el hilo de grabación
+recording_thread = None
+recording_active = False  # Bandera para controlar si se está grabando
+
 # 📞 Procesamiento de audio
 def handle_audio(audio_chunk):
-    global emotion_word_buffer
+    global emotion_word_buffer, recording_active
+
+    if not recording_active:
+        # Si la grabación fue detenida, ignoramos el procesamiento
+        return
 
     if speech_to_text.accept_waveform(audio_chunk):
         result = speech_to_text.get_result()
@@ -92,11 +97,30 @@ def index():
 def connect():
     print("✅ Cliente conectado vía WebSocket")
 
+@socketio.on("start_recording")
+def start_recording():
+    global recording_thread, recording_active
+    if not recording_active:
+        recording_active = True
+        print("🚀 Iniciando grabación...")
+        recording_thread = Thread(target=streamer.start_stream)
+        recording_thread.start()
+        emit("status", {"message": "Grabación iniciada."})
+    else:
+        emit("status", {"message": "La grabación ya está en curso."})
+
+@socketio.on("stop_recording")
+def stop_recording():
+    global recording_active
+    if recording_active:
+        print("⏹️ Deteniendo grabación...")
+        recording_active = False
+        streamer.stop_stream()
+        emit("status", {"message": "Grabación detenida."})
+    else:
+        emit("status", {"message": "No hay grabación en curso."})
+
 # 🚀 Ejecutar servidor
 if __name__ == "__main__":
-    print("🚀 Iniciando transcripción en hilo separado...")
-    thread = Thread(target=streamer.start_stream)
-    thread.start()
-
     print("🌐 Levantando servidor Flask + SocketIO en puerto 5000")
     socketio.run(app, debug=True)

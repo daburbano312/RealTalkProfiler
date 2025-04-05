@@ -42,12 +42,41 @@
             border-left: 4px solid #f1c40f;
             color: #4d3900;
         }
+
+        /* Estilos para botones */
+        .btn {
+            padding: 0.8rem 1.5rem;
+            margin: 0.5rem;
+            font-size: 1em;
+            cursor: pointer;
+        }
+        .btn-start {
+            background-color: #28a745;
+            color: #fff;
+            border: none;
+        }
+        .btn-stop {
+            background-color: #dc3545;
+            color: #fff;
+            border: none;
+        }
+        #status {
+            margin: 1rem 0;
+            font-weight: bold;
+        }    
+        
     </style>
 </head>
 <body>
     <h1>🧠 Transcripción en vivo</h1>
     <div id="output"></div>
 
+    <!-- Botones de control -->
+    <button id="btnStart" class="btn btn-start">Iniciar Grabación</button>
+    <button id="btnStop" class="btn btn-stop">Detener Grabación</button>
+    <div id="status"></div>
+
+    <div id="output"></div>
     <h2>🎭 Emoción detectada:</h2>
     <div id="emotionOutput">Analizando…</div>
 

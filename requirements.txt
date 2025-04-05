@@ -2,3 +2,7 @@ Flask==2.2.5
 Flask-SocketIO==5.3.6
 PyAudio==0.2.13
 vosk==0.3.45
+pysentimiento==1.0.4
+httpx==0.24.0
+openai==0.27.0
+python-dotenv==1.0.0

@@ -1,7 +1,25 @@
 const socket = io();
 
+const btnStart = document.getElementById('btnStart');
+const btnStop = document.getElementById('btnStop');
+
 let transcription = "";
 let allKeywords = []; // 🔑 Acumulador global de keywords
+
+// Enviar evento para iniciar grabación
+btnStart.addEventListener('click', () => {
+    socket.emit('start_recording');
+  });
+  
+  // Enviar evento para detener grabación
+  btnStop.addEventListener('click', () => {
+    socket.emit('stop_recording');
+  });
+  
+  // Actualizar el estado de la aplicación
+  socket.on('status', (data) => {
+    statusDiv.textContent = data.message;
+  });
 
 socket.on("transcription", (data) => {
     const output = document.getElementById("output");
