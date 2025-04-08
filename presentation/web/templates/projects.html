@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proyectos Inmobiliarios</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css"> <!-- Enlace al archivo de estilos -->
+</head>
+<body>
+
+<div class="main-container">
+    <!-- Barra lateral -->
+    <div class="sidebar">
+        <div class="logo">RealTalk Profiler</div>
+        <div class="menu">
+            <div class="menu-item" id="dashboardLink">Dashboard</div>  <!-- Asegurarse de que el ID coincida -->
+            <div class="menu-item active" id="projectsLink">Proyectos</div>  <!-- Asegurarse de que el ID coincida -->
+        </div>
+    </div>
+
+    <!-- Contenido -->
+    <div class="content">
+        <h1>Proyectos Inmobiliarios Disponibles</h1>
+
+        <!-- Filtro de búsqueda -->
+        <div class="filter-bar">
+            <label for="min-price">Rango de precio:</label>
+            <input type="number" id="min-price" placeholder="Precio mínimo" />
+            <input type="number" id="max-price" placeholder="Precio máximo" />
+            <button id="filter-btn">Filtrar</button>
+        </div>
+
+        <!-- Contenedor de los proyectos -->
+        <div id="projects-list">
+            <!-- Los proyectos se mostrarán aquí dinámicamente -->
+        </div>
+    </div>
+</div>
+
+<script>
+    // Obtener los proyectos de la base de datos
+    async function getProjects() {
+        const response = await fetch('/api/proyectos');
+        const data = await response.json();
+
+        const projectsList = document.getElementById('projects-list');
+        projectsList.innerHTML = '';  // Limpiar antes de agregar los proyectos
+
+        if (Array.isArray(data)) {
+            data.forEach(project => {
+                const projectCard = document.createElement('div');
+                projectCard.classList.add('project-card');
+                projectCard.innerHTML = `
+                    <div class="project-card-header">
+                        <h3>${project.nombre}</h3>
+                        <div class="price">${project.precio}</div>
+                    </div>
+                    <p>${project.descripcion}</p>
+                    <div class="location">Ubicación: ${project.ubicacion}</div>
+                    <button class="view-details-btn">Ver detalles</button>
+                `;
+                projectsList.appendChild(projectCard);
+            });
+        } else {
+            projectsList.innerHTML = `<p>No se encontraron proyectos.</p>`;
+        }
+    }
+
+    // Llamar la función para cargar los proyectos al cargar la página
+    getProjects();
+
+    // Filtrar proyectos por precio
+    document.getElementById('filter-btn').addEventListener('click', () => {
+        const minPrice = document.getElementById('min-price').value;
+        const maxPrice = document.getElementById('max-price').value;
+
+        const filteredProjects = projects.filter(project => {
+            return (
+                (minPrice === "" || project.precio >= minPrice) &&
+                (maxPrice === "" || project.precio <= maxPrice)
+            );
+        });
+
+        displayProjects(filteredProjects);
+    });
+</script>
+
+</body>
+</html>

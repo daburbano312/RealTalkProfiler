@@ -1,7 +1,9 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO, emit
 from threading import Thread
 import os
+import sqlite3
+from flask_cors import CORS
 
 from core.use_cases.transcribe_stream import TranscriptionUseCase
 from infrastructure.audio.vosk_speech_to_text import VoskSpeechToText
@@ -30,6 +32,7 @@ app = Flask(__name__,
             template_folder="presentation/web/templates",
             static_folder="presentation/web/static")
 socketio = SocketIO(app, cors_allowed_origins="*")
+CORS(app)
 
 # 🔤 Transcripción
 speech_to_text = VoskSpeechToText()
@@ -96,6 +99,45 @@ def index():
 @socketio.on("connect")
 def connect():
     print("✅ Cliente conectado vía WebSocket")
+
+# Ruta para la página de proyectos
+@app.route("/proyectos")
+def proyectos():
+    return render_template("projects.html")
+
+# Ruta para obtener los proyectos desde la base de datos
+@app.route("/api/proyectos", methods=['GET'])
+def obtener_proyectos():
+    try:
+        # Conectar a la base de datos
+        conn = sqlite3.connect("data/inmuebles.db")
+        c = conn.cursor()
+
+        # Obtener los proyectos desde la base de datos
+        c.execute("SELECT id, nombre, ubicacion, precio, descripcion FROM proyectos")
+        proyectos = c.fetchall()
+        conn.close()
+
+        # Verificar si hay proyectos y devolverlos como JSON
+        if proyectos:
+            proyectos_list = [
+                {
+                    "id": proyecto[0],
+                    "nombre": proyecto[1],
+                    "ubicacion": proyecto[2],
+                    "precio": proyecto[3],
+                    "descripcion": proyecto[4]
+                }
+                for proyecto in proyectos
+            ]
+            return jsonify(proyectos_list)
+        else:
+            return jsonify({"message": "No se encontraron proyectos."}), 404
+
+    except sqlite3.Error as e:
+        return jsonify({"error": f"Error en la base de datos: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Ocurrió un error inesperado: {str(e)}"}), 500   
 
 @socketio.on("start_recording")
 def start_recording():
