@@ -5,85 +5,156 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Proyectos Inmobiliarios</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/styles.css"> <!-- Enlace al archivo de estilos -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
 
 <div class="main-container">
-    <!-- Barra lateral -->
     <div class="sidebar">
-        <div class="logo">RealTalk Profiler</div>
-        <div class="menu">
-            <div class="menu-item" id="dashboardLink">Dashboard</div>  <!-- Asegurarse de que el ID coincida -->
-            <div class="menu-item active" id="projectsLink">Proyectos</div>  <!-- Asegurarse de que el ID coincida -->
+        <div class="sidebar-header">
+            <a href="{{ url_for('index') }}" class="logo-link">
+                 <h1 class="logo">
+                     <i class="fas fa-headset"></i> <span>RealTalk Profiler</span>
+                 </h1>
+            </a>
+            </div>
+        <nav class="menu">
+            <a href="{{ url_for('index') }}" class="menu-item {% if request.endpoint == 'index' %}active{% endif %}" id="dashboardLink">
+                <i class="fas fa-tachometer-alt fa-fw"></i> <span class="menu-text">Dashboard</span>
+            </a>
+            <a href="{{ url_for('proyectos') }}" class="menu-item {% if request.endpoint == 'proyectos' %}active{% endif %}" id="projectsLink">
+                <i class="fas fa-building fa-fw"></i> <span class="menu-text">Proyectos</span>
+            </a>
+            </nav>
         </div>
-    </div>
 
-    <!-- Contenido -->
     <div class="content">
         <h1>Proyectos Inmobiliarios Disponibles</h1>
 
-        <!-- Filtro de búsqueda -->
         <div class="filter-bar">
-            <label for="min-price">Rango de precio:</label>
-            <input type="number" id="min-price" placeholder="Precio mínimo" />
-            <input type="number" id="max-price" placeholder="Precio máximo" />
-            <button id="filter-btn">Filtrar</button>
+            <label for="min-price">Precio Mínimo (COP):</label>
+            <input type="number" id="min-price" placeholder="Ej: 300000000" min="0" step="10000000"/>
+
+            <label for="max-price">Precio Máximo (COP):</label>
+            <input type="number" id="max-price" placeholder="Ej: 900000000" min="0" step="10000000"/>
+            <button id="filter-btn" class="btn btn-filter"><i class="fas fa-filter"></i> Filtrar</button>
+            <button id="reset-btn" class="btn btn-secondary"><i class="fas fa-undo"></i> Limpiar</button>
         </div>
 
-        <!-- Contenedor de los proyectos -->
-        <div id="projects-list">
-            <!-- Los proyectos se mostrarán aquí dinámicamente -->
+        <div id="projects-list" class="projects-container">
+            <p class="loading-message">Cargando proyectos...</p>
         </div>
     </div>
 </div>
 
 <script>
-    // Obtener los proyectos de la base de datos
-    async function getProjects() {
-        const response = await fetch('/api/proyectos');
-        const data = await response.json();
+    document.addEventListener('DOMContentLoaded', () => {
+        const projectsListDiv = document.getElementById('projects-list');
+        const filterBtn = document.getElementById('filter-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const minPriceInput = document.getElementById('min-price');
+        const maxPriceInput = document.getElementById('max-price');
+        // const locationInput = document.getElementById('location-filter'); // Si añades filtro de ubicación
 
-        const projectsList = document.getElementById('projects-list');
-        projectsList.innerHTML = '';  // Limpiar antes de agregar los proyectos
+        // --- Función para mostrar los proyectos en tarjetas ---
+        function displayProjects(projectsData) {
+            projectsListDiv.innerHTML = ''; // Limpiar contenido anterior (loading o resultados viejos)
 
-        if (Array.isArray(data)) {
-            data.forEach(project => {
+            if (!Array.isArray(projectsData) || projectsData.length === 0) {
+                projectsListDiv.innerHTML = '<p class="info-message">No se encontraron proyectos con los criterios seleccionados.</p>';
+                return;
+            }
+
+            projectsData.forEach(project => {
                 const projectCard = document.createElement('div');
                 projectCard.classList.add('project-card');
+
+                // Formatear precio (asumiendo que el backend ahora envía un número)
+                const formattedPrice = typeof project.precio === 'number'
+                    ? `COP ${project.precio.toLocaleString('es-CO')}`
+                    : project.precio; // Mantener como texto si no es número
+
                 projectCard.innerHTML = `
                     <div class="project-card-header">
-                        <h3>${project.nombre}</h3>
-                        <div class="price">${project.precio}</div>
+                        <h3>${project.nombre || 'Sin nombre'}</h3>
+                        <div class="price">${formattedPrice}</div>
                     </div>
-                    <p>${project.descripcion}</p>
-                    <div class="location">Ubicación: ${project.ubicacion}</div>
-                    <button class="view-details-btn">Ver detalles</button>
+                    <p class="description">${project.descripcion || 'Sin descripción.'}</p>
+                    <div class="location"><i class="fas fa-map-marker-alt"></i> ${project.ubicacion || 'Ubicación no especificada'}</div>
+                    <div class="card-actions">
+                        <button class="btn btn-details" data-project-id="${project.id}">Ver detalles</button>
+                    </div>
                 `;
-                projectsList.appendChild(projectCard);
+
+                // Añadir funcionalidad al botón "Ver detalles"
+                const detailsButton = projectCard.querySelector('.btn-details');
+                if (detailsButton) {
+                    detailsButton.addEventListener('click', () => {
+                        // Acción placeholder: muestra un alert. Reemplazar con modal, nueva página, etc.
+                        alert(`Detalles del proyecto ID: ${project.id}\nNombre: ${project.nombre}\nPrecio: ${formattedPrice}\nUbicación: ${project.ubicacion}`);
+                        // Aquí podrías abrir un modal con más información, o navegar a otra página.
+                    });
+                }
+
+                projectsListDiv.appendChild(projectCard);
             });
-        } else {
-            projectsList.innerHTML = `<p>No se encontraron proyectos.</p>`;
         }
-    }
 
-    // Llamar la función para cargar los proyectos al cargar la página
-    getProjects();
+        // --- Función para obtener proyectos de la API (con filtros) ---
+        async function fetchProjects(params = {}) {
+            projectsListDiv.innerHTML = '<p class="loading-message">Buscando proyectos...</p>'; // Mostrar feedback
 
-    // Filtrar proyectos por precio
-    document.getElementById('filter-btn').addEventListener('click', () => {
-        const minPrice = document.getElementById('min-price').value;
-        const maxPrice = document.getElementById('max-price').value;
+            // Construir URL con query parameters
+            const url = new URL('/api/proyectos', window.location.origin);
+            Object.keys(params).forEach(key => {
+                if (params[key] !== null && params[key] !== undefined && params[key] !== '') {
+                    url.searchParams.append(key, params[key]);
+                }
+            });
 
-        const filteredProjects = projects.filter(project => {
-            return (
-                (minPrice === "" || project.precio >= minPrice) &&
-                (maxPrice === "" || project.precio <= maxPrice)
-            );
+            console.log("Fetching:", url.toString()); // Para depuración
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    // Intentar obtener mensaje de error del backend si existe
+                    let errorMsg = `Error al cargar proyectos: ${response.statusText}`;
+                     try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorData.message || errorMsg;
+                    } catch (e) { /* Ignorar si no hay JSON en el error */ }
+                    throw new Error(errorMsg);
+                }
+                const data = await response.json();
+                displayProjects(data); // Mostrar los proyectos recibidos
+            } catch (error) {
+                console.error("Error fetching projects:", error);
+                projectsListDiv.innerHTML = `<p class="error-message">Error al cargar proyectos: ${error.message}. Intenta de nuevo más tarde.</p>`;
+            }
+        }
+
+        // --- Event Listeners para los filtros ---
+        filterBtn.addEventListener('click', () => {
+            const filters = {
+                min_price: minPriceInput.value || null, // Enviar null o string vacío si no hay valor
+                max_price: maxPriceInput.value || null,
+                // location: locationInput.value || null // Si añades filtro de ubicación
+            };
+            fetchProjects(filters);
         });
 
-        displayProjects(filteredProjects);
-    });
+        resetBtn.addEventListener('click', () => {
+            minPriceInput.value = '';
+            maxPriceInput.value = '';
+            // locationInput.value = ''; // Si añades filtro de ubicación
+            fetchProjects(); // Cargar todos los proyectos sin filtros
+        });
+
+
+        // --- Carga inicial de proyectos ---
+        fetchProjects();
+
+    }); // Fin de DOMContentLoaded
 </script>
 
 </body>

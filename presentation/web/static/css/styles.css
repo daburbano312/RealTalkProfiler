@@ -3,77 +3,143 @@ body {
     font-family: 'Roboto', sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f4f7fa;  /* Fondo claro */
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
+    background-color: #f4f7fa; /* Fondo claro */
+    /* display: flex; */ /* Eliminado: .main-container maneja el layout principal */
+    /* flex-direction: column; */ /* Eliminado */
+    /* height: 100vh; */ /* Eliminado: No necesario en body */
 }
 
-/* Barra de Estado */
-#statusBar {
+/* Barra de Estado (Si aún la usas, si no, puedes eliminarla) */
+/* #statusBar {
     background-color: #2c3e50;
     color: white;
     padding: 10px;
     font-size: 18px;
     text-align: center;
     font-weight: bold;
-}
+} */
 
-/* Barra Lateral */
+/* --- INICIO: ESTILOS MEJORADOS PARA BARRA LATERAL --- */
+/* (Reemplazan los estilos .sidebar, .sidebar .logo, .sidebar .menu, .sidebar .menu-item originales) */
+
 .sidebar {
-    width: 250px;
-    background-color: #3A4B59;  /* Color más suave en azul */
-    color: white;
-    padding-top: 20px;
+    width: 260px; /* Ancho de la barra lateral */
+    background-color: #2c3e50; /* Azul oscuro/grisáceo */
+    color: #ecf0f1;   /* Texto principal claro */
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    margin-right: 20px;
+    height: 100vh;     /* Ocupa toda la altura de la ventana */
+    position: fixed;   /* Fija la barra lateral */
+    left: 0;
+    top: 0;
+    box-shadow: 3px 0 8px rgba(0, 0, 0, 0.15); /* Sombra más notoria */
+    z-index: 1000;      /* Asegura que esté por encima */
+    transition: width 0.3s ease; /* Para futura animación de colapso */
+}
+
+.sidebar-header {
+    padding: 18px 25px; /* Más padding */
+    border-bottom: 1px solid #3a5068; /* Separador sutil */
+    flex-shrink: 0; /* Evita que se encoja */
+}
+
+.sidebar .logo-link {
+    text-decoration: none; /* Quitar subrayado del enlace del logo */
 }
 
 .sidebar .logo {
-    font-size: 24px;
-    font-weight: bold;
-    text-align: center;
-    color: #45B8B5;
-    margin-bottom: 40px;
+    color: #ffffff; /* Blanco brillante para el logo */
+    font-size: 1.5em; /* Tamaño del logo */
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px; /* Espacio entre icono y texto del logo */
+}
+.sidebar .logo i {
+    color: #1abc9c; /* Color turquesa para el icono del logo */
+    font-size: 1.2em; /* Icono del logo un poco más grande */
+}
+.sidebar .logo span {
+     /* Estilos específicos para el texto del logo si es necesario */
 }
 
-.sidebar .menu {
-    flex-grow: 1;
+
+.menu { /* Estilo para la etiqueta <nav> */
+    flex-grow: 1; /* El menú ocupa el espacio restante */
+    padding: 20px 0; /* Espacio vertical alrededor de los items */
+    margin: 0;
+    overflow-y: auto; /* Scroll si hay muchos items */
 }
 
-.sidebar .menu-item {
-    padding: 20px;
-    border-bottom: 1px solid #3B3F46;
-    font-size: 18px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
+/* Estilo para los enlaces <a> dentro del menú */
+.menu-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 25px; /* Padding generoso (vertical, horizontal) */
+    color: #bdc3c7;   /* Color de texto normal (gris claro) */
+    text-decoration: none;
+    font-size: 1em;
+    transition: background-color 0.2s ease, color 0.2s ease, border-left-color 0.2s ease;
+    border-left: 4px solid transparent; /* Borde izquierdo transparente por defecto */
+    gap: 15px; /* Espacio entre icono y texto */
 }
 
-.sidebar .menu-item:hover {
-    background-color: #1F2328;
+.menu-item i.fa-fw { /* Estilos específicos para iconos de ancho fijo */
+    color: #95a5a6;   /* Color de icono normal (ligeramente más oscuro) */
+    font-size: 1.1em; /* Tamaño de los iconos del menú */
+    text-align: center; /* Asegura centrado si usas fa-fw */
+    width: 1.28571429em; /* Ancho estándar de fa-fw para alineación */
+    transition: color 0.2s ease;
+}
+.menu-item .menu-text {
+    /* Estilos para el texto */
+    transition: opacity 0.3s ease;
 }
 
-.sidebar .menu-item.active {
-    background-color: #1F2328;
+.menu-item:hover {
+    background-color: rgba(26, 188, 156, 0.1); /* Fondo turquesa muy sutil al pasar */
+    color: #ffffff; /* Texto blanco al pasar */
+    border-left-color: #1abc9c; /* Muestra el borde izquierdo al pasar */
 }
+.menu-item:hover i.fa-fw {
+    color: #1abc9c; /* Icono turquesa al pasar */
+}
+
+.menu-item.active {
+    background-color: #1abc9c; /* Color de fondo activo (turquesa) */
+    color: #ffffff; /* Texto blanco brillante */
+    font-weight: 500;
+    border-left-color: #ffffff; /* Borde izquierdo blanco para el activo */
+}
+
+.menu-item.active i.fa-fw {
+    color: #ffffff; /* Icono blanco en estado activo */
+}
+
+/* --- FIN: ESTILOS MEJORADOS PARA BARRA LATERAL --- */
+
 
 /* Contenedor Principal */
 .main-container {
-    display: flex;
-    flex-direction: row;
-    flex-grow: 1;
-    padding: 20px;
+    display: flex; /* Mantenemos flex para layout general */
+    /* flex-direction: row; */ /* Ya no es necesario aquí, body no es flex */
+    /* flex-grow: 1; */ /* No necesario si body no es flex */
+    /* padding: 20px; */ /* Eliminado: El padding va en .content */
+    min-height: 100vh;
 }
 
 /* Contenido */
 .content {
     flex-grow: 1;
     background-color: white;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
+    padding: 25px 30px; /* Padding aumentado */
+    /* display: flex; */ /* Puede que no necesites flex direction column aquí */
+    /* flex-direction: column; */
+    /* AJUSTE IMPORTANTE: Margen izquierdo para dejar espacio a la sidebar fija */
+    margin-left: 260px; /* Coincide con el width de .sidebar */
+    width: calc(100% - 260px); /* Ocupa el resto del ancho */
+    transition: margin-left 0.3s ease, width 0.3s ease; /* Para animación si se colapsa */
 }
 
 /* Títulos */
@@ -82,15 +148,17 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
+    border-bottom: 1px solid #eee; /* Añadir un separador */
+    padding-bottom: 15px;
 }
 
 .header .title {
-    font-size: 24px;
-    font-weight: bold;
-    color: #2C3E50;
+    font-size: 1.8em; /* Ligeramente más grande */
+    font-weight: 500; /* Un poco menos grueso */
+    color: #2c3e50;
 }
 
-/* Estilo del gráfico circular */
+/* Estilo del gráfico circular (Sin cambios respecto a tu versión) */
 .circle-chart {
     width: 80px;
     height: 80px;
@@ -103,8 +171,8 @@ body {
     font-size: 16px;
 }
 
-/* Botones */
-.btn {
+/* Botones (Se mantienen tus estilos, pero se ajustan los provistos después si son mejores) */
+/* .btn {
     padding: 15px 30px;
     font-size: 18px;
     font-weight: bold;
@@ -116,25 +184,25 @@ body {
 }
 
 .btn-start {
-    background-color: #3498db;  /* Azul más suave */
+    background-color: #3498db;
     color: white;
 }
 
 .btn-stop {
-    background-color: #e74c3c;  /* Rojo más suave */
+    background-color: #e74c3c;
     color: white;
 }
 
 .btn:hover {
     opacity: 0.8;
-}
+} */
 
-#btnStart:disabled, #btnStop:disabled {
+/* #btnStart:disabled, #btnStop:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
+} */
 
-/* Panel de Resultados */
+/* Panel de Resultados (Sin cambios) */
 .results-panel {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -145,220 +213,411 @@ body {
 .resultCard {
     background-color: #FFFFFF;
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08); /* Sombra más sutil */
+    padding: 25px; /* Más padding */
     margin-bottom: 20px;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .resultCard:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+    transform: translateY(-4px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.12);
 }
 
 .resultCard h3 {
-    font-size: 18px;
-    color: #2C3E50;
-    margin-bottom: 10px;
+    font-size: 1.1em; /* Ajuste */
+    color: #2c3e50;
+    margin-top: 0; /* Quitar margen superior del h3 */
+    margin-bottom: 15px; /* Más espacio bajo el título */
 }
 
 .resultCard p {
-    font-size: 16px;
-    color: #34495E;
+    font-size: 1em; /* Tamaño base */
+    color: #555; /* Color de párrafo más oscuro */
+    line-height: 1.5; /* Mejorar legibilidad */
 }
 
 .icon-container {
-    font-size: 40px;
-    color: #3498db;  /* Azul destacado */
-    margin-bottom: 10px;
+    font-size: 36px; /* Ligeramente más pequeño */
+    color: #1abc9c; /* Usar el color turquesa activo */
+    margin-bottom: 15px;
+    text-align: left; /* Alinear icono a la izquierda */
 }
 
 /* Estilo para la tarjeta de recomendación */
 .full-width-card {
-    grid-column: span 2;
+     /* Ajusta el span según tu grid, si tienes 2 columnas usa span 2, si tienes 3 usa span 3 */
+    grid-column: 1 / -1; /* Ocupa todas las columnas disponibles */
 }
 
-/* Responsividad */
-@media (max-width: 768px) {
-    .results-panel {
-        grid-template-columns: 1fr;
-    }
+/* --- INICIO: ESTILOS CONSOLIDADOS PARA DASHBOARD Y PROYECTOS --- */
+/* (Combinando y refinando estilos de bloques posteriores de tu CSS) */
 
-    .btn {
-        font-size: 16px;
-        padding: 12px 20px;
-    }
-
-    .resultCard h3 {
-        font-size: 16px;
-    }
-
-    .resultCard p {
-        font-size: 14px;
-    }
+/* Indicador de estado (ya estaba, sin cambios) */
+.status-indicator {
+    padding: 8px 12px;
+    margin: 15px 0;
+    border-radius: 4px;
+    font-weight: bold;
+    text-align: center;
+    transition: background-color 0.3s ease;
 }
+.status-info { background-color: #e0e0e0; color: #333; }
+.status-success { background-color: #d4edda; color: #155724; }
+.status-error { background-color: #f8d7da; color: #721c24; }
+.status-warning { background-color: #fff3cd; color: #856404; }
 
-/* Estilo de los proyectos - Nuevo diseño */
-.project-card {
-    background-color: #FFFFFF;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    padding: 20px;
+/* Controles (botones Start/Stop) */
+.controls {
     margin-bottom: 20px;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    display: flex;
+    gap: 15px; /* Espacio entre botones */
+    flex-wrap: wrap; /* Para pantallas pequeñas */
 }
 
+/* Estilo base para botones */
+.btn {
+    padding: 10px 20px; /* Ajuste de padding */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.95em; /* Ligeramente más pequeño */
+    font-weight: 500; /* Peso medio */
+    transition: background-color 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center; /* Centrar contenido del botón */
+    gap: 8px; /* Espacio entre icono y texto */
+    text-transform: uppercase; /* Opcional: Mayúsculas */
+    letter-spacing: 0.5px; /* Opcional: Espaciado letras */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.btn:hover:not(:disabled) {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+.btn i {
+    font-size: 1.1em;
+}
+
+/* Botones específicos Start/Stop/Filter/Secondary */
+.btn-start { background-color: #2ecc71; color: white; } /* Verde esmeralda */
+.btn-start:hover:not(:disabled) { background-color: #27ae60; }
+
+.btn-stop { background-color: #e74c3c; color: white; } /* Rojo */
+.btn-stop:hover:not(:disabled) { background-color: #c0392b; }
+
+.btn-filter { background-color: #3498db; color: white; } /* Azul */
+.btn-filter:hover:not(:disabled) { background-color: #2980b9; }
+
+.btn-secondary { background-color: #95a5a6; color: white; } /* Gris */
+.btn-secondary:hover:not(:disabled) { background-color: #7f8c8d; }
+
+.btn-details { background-color: #1abc9c; color: white; } /* Turquesa */
+.btn-details:hover:not(:disabled) { background-color: #16a085; }
+
+
+/* Estado deshabilitado */
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Animación de frecuencia (Usando .frequency-animation) */
+.frequency-animation {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    height: 50px; /* Ajusta la altura */
+    margin: 25px 0;
+    opacity: 0.3; /* Apagada por defecto */
+    transition: opacity 0.3s ease;
+}
+.frequency-animation.active {
+    opacity: 1; /* Encendida */
+}
+.frequency-animation .bar {
+    width: 8px; /* Ancho de cada barra */
+    background-color: #3498db; /* Azul */
+    margin: 0 3px; /* Espacio horizontal */
+    border-radius: 3px 3px 0 0;
+    animation: voice-level 1s infinite ease-in-out alternate;
+    height: 5px; /* Altura mínima */
+    /* La animación solo se aplica si .active está presente */
+    animation-play-state: paused;
+}
+.frequency-animation.active .bar {
+    animation-play-state: running; /* Activar animación */
+}
+
+/* Retrasos para animación (ya estaban, sin cambios) */
+.frequency-animation .bar:nth-child(1) { animation-delay: -0.9s; }
+.frequency-animation .bar:nth-child(2) { animation-delay: -0.8s; }
+.frequency-animation .bar:nth-child(3) { animation-delay: -0.7s; }
+.frequency-animation .bar:nth-child(4) { animation-delay: -0.6s; }
+.frequency-animation .bar:nth-child(5) { animation-delay: -0.5s; }
+.frequency-animation .bar:nth-child(6) { animation-delay: -0.4s; }
+.frequency-animation .bar:nth-child(7) { animation-delay: -0.3s; }
+.frequency-animation .bar:nth-child(8) { animation-delay: -0.2s; }
+
+/* Keyframes para animación (ya estaban, sin cambios) */
+@keyframes voice-level {
+    0% { height: 5px; opacity: 0.5; }
+    100% { height: 50px; opacity: 1; }
+}
+
+/* Placeholders en tarjetas (ya estaba, sin cambios) */
+.output-placeholder {
+    color: #888;
+    font-style: italic;
+}
+
+/* Spinner (ya estaba, sin cambios) */
+.spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border-left-color: #3498db; /* Azul */
+    animation: spin 1s linear infinite; /* Cambiado a linear */
+    display: inline-block;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Barra de filtros (Proyectos) */
+.filter-bar {
+    background-color: #ecf0f1; /* Fondo gris claro */
+    padding: 15px 20px;
+    margin-bottom: 25px;
+    border-radius: 5px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 15px;
+    border: 1px solid #e0e0e0;
+}
+.filter-bar label {
+    font-weight: 500; /* Peso medio */
+    margin-right: 5px;
+    color: #34495e;
+}
+.filter-bar input[type="number"],
+.filter-bar input[type="text"] {
+    padding: 9px 12px; /* Más padding */
+    border: 1px solid #bdc3c7;
+    border-radius: 4px;
+    margin-right: 10px;
+    font-size: 0.95em;
+}
+.filter-bar input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+/* Estilos para los botones dentro de la filter-bar ya definidos (.btn-filter, .btn-secondary) */
+
+/* Contenedor de proyectos */
+.projects-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); /* Tarjetas un poco más anchas */
+    gap: 25px;
+}
+
+/* Tarjeta de proyecto (Refinando estilos) */
+.project-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 0; /* Quitar padding aquí, se maneja adentro */
+    background-color: #fff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.07);
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+    overflow: hidden; /* Para que el borde inferior no se salga */
+}
 .project-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.1);
 }
 
+/* Encabezado de la tarjeta de proyecto */
 .project-card-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    padding: 20px 20px 15px 20px; /* Padding específico */
+    /* border-bottom: 1px solid #eee; */ /* Quitar borde aquí */
+    /* margin-bottom: 0; */
 }
-
 .project-card-header h3 {
-    font-size: 20px;
-    color: #2C3E50;
+    margin: 0;
+    font-size: 1.2em; /* Más grande */
+    font-weight: 600; /* Más grueso */
+    color: #2c3e50;
+}
+.project-card .price {
+    font-weight: 600; /* Más grueso */
+    color: #e67e22; /* Naranja para el precio */
+    font-size: 1.1em; /* Más grande */
+    white-space: nowrap;
+    margin-left: 15px;
+    background-color: #fdf2e9; /* Fondo naranja muy claro */
+    padding: 3px 8px;
+    border-radius: 4px;
 }
 
-.project-card-header .price {
-    font-size: 18px;
-    color: #e74c3c;
-    font-weight: bold;
+/* Contenido de la tarjeta (descripción, ubicación) */
+.project-card .card-content {
+     padding: 0 20px 15px 20px; /* Padding para descripción y ubicación */
+     flex-grow: 1; /* Ocupa espacio */
 }
 
-.project-card p {
-    font-size: 16px;
-    color: #34495E;
-    margin-top: 10px;
+.project-card .description {
+    font-size: 0.95em;
+    color: #555;
+    line-height: 1.5;
+    margin-bottom: 15px;
 }
 
 .project-card .location {
-    font-size: 14px;
+    font-size: 0.9em;
     color: #7f8c8d;
-    margin-top: 10px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.project-card .location i {
+    color: #e74c3c; /* Rojo para icono ubicación */
 }
 
-.view-details-btn {
-    margin-top: 15px;
-    padding: 10px 20px;
-    background-color: #3498db;
-    color: white;
+/* Pie de tarjeta (para botón) */
+.project-card .card-actions {
+    margin-top: auto; /* Empuja al fondo */
+    padding: 15px 20px;
+    text-align: right;
+    border-top: 1px solid #f0f0f0; /* Separador sutil */
+    background-color: #f9f9f9; /* Fondo ligeramente diferente */
+}
+/* Estilo .btn-details ya definido */
+
+
+/* Mensajes de carga e información (Sin cambios) */
+.loading-message, .info-message, .error-message {
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+    color: #555;
+    grid-column: 1 / -1;
+}
+.error-message {
+    color: #721c24;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
     border-radius: 4px;
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.3s;
 }
 
-.view-details-btn:hover {
-    background-color: #2980b9;
+/* --- FIN: ESTILOS CONSOLIDADOS --- */
+
+
+/* Responsividad General (Ajustando la existente) */
+@media (max-width: 992px) { /* Punto de quiebre para tablets */
+     /* Opcional: Colapsar sidebar aquí si se implementa */
+     /* .sidebar { width: 80px; }
+     .content { margin-left: 80px; width: calc(100% - 80px); } */
+
+     .results-panel {
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); /* Ajustar tamaño mínimo */
+     }
+     .projects-container {
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+     }
+     .full-width-card {
+         grid-column: 1 / -1; /* Asegurar que ocupe todo en menos columnas */
+     }
 }
 
-/* Filtros de Búsqueda para Proyectos */
-.filter-bar {
-    margin-bottom: 20px;
-}
 
-.filter-bar input {
-    padding: 8px;
-    font-size: 16px;
-    margin-right: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
-
-.filter-bar button {
-    padding: 10px 20px;
-    font-size: 16px;
-    border: none;
-    background-color: #3498db;
-    color: white;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.filter-bar button:hover {
-    background-color: #2980b9;
-}
-
-/* Responsividad para los proyectos */
-@media (max-width: 768px) {
-    .project-card {
-        width: 100%;
+@media (max-width: 768px) { /* Punto de quiebre para móviles */
+    /* Colapsar sidebar o hacerla overlay */
+    .sidebar {
+        width: 200px; /* Reducir ancho en móvil si no es colapsable */
+        /* O considerar hacerla overlay/off-canvas */
     }
+    .content {
+        margin-left: 200px; /* Ajustar margen */
+        width: calc(100% - 200px);
+        padding: 20px 15px; /* Menos padding horizontal */
+    }
+    /* Si se hace overlay, el margen sería 0 */
+
+    .header .title {
+        font-size: 1.5em;
+    }
+
+    .results-panel {
+        grid-template-columns: 1fr; /* Una columna */
+        gap: 15px;
+    }
+     .projects-container {
+        grid-template-columns: 1fr; /* Una columna */
+        gap: 15px;
+     }
+
+    .btn {
+        font-size: 0.9em; /* Botones más pequeños */
+        padding: 10px 15px;
+    }
+
+    .resultCard { padding: 20px; }
+    .resultCard h3 { font-size: 1em; }
+    .resultCard p { font-size: 0.9em; }
+
+    .project-card-header h3 { font-size: 1.1em; }
+    .project-card .price { font-size: 1em; }
+    .project-card .description { font-size: 0.9em; }
+    .project-card .location { font-size: 0.85em; }
 
     .filter-bar {
-        display: flex;
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch; /* Ocupar ancho */
+        gap: 10px;
     }
-
-    .filter-bar input, .filter-bar button {
-        width: 100%;
-        margin: 5px 0;
-    }
-}
-
-/* Animación de las barras de frecuencia */
-@keyframes pulse {
-    0% {
-        height: 30px;
-        opacity: 0.5;
-    }
-    50% {
-        height: 60px;
-        opacity: 1;
-    }
-    100% {
-        height: 30px;
-        opacity: 0.5;
+    .filter-bar input[type="number"],
+    .filter-bar input[type="text"],
+    .filter-bar button {
+        width: 100%; /* Ocupar todo el ancho */
+        margin-right: 0;
+        box-sizing: border-box; /* Incluir padding/border en el ancho */
     }
 }
 
-/* Contenedor de la animación de frecuencia */
-#frequencyAnimation {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-top: 20px;
-    visibility: hidden; /* Inicialmente oculto */
-}
-
-.bar {
-    width: 6px;
-    margin: 0 3px;
-    background-color: #3498db;  /* Azul brillante */
-    border-radius: 5px;
-    animation: pulse 1s ease-in-out infinite;
-}
-
-.bar:nth-child(2) {
-    animation-delay: 0.1s;
-}
-
-.bar:nth-child(3) {
-    animation-delay: 0.2s;
-}
-
-.bar:nth-child(4) {
-    animation-delay: 0.3s;
-}
-
-.bar:nth-child(5) {
-    animation-delay: 0.4s;
-}
-
-.bar:nth-child(6) {
-    animation-delay: 0.5s;
-}
-
-.bar:nth-child(7) {
-    animation-delay: 0.6s;
-}
-
-.bar:nth-child(8) {
-    animation-delay: 0.7s;
+@media (max-width: 576px) { /* Ajustes extra finos para móviles muy pequeños */
+     .sidebar {
+         width: 100%; /* Ocupar todo el ancho si se hace overlay */
+         height: auto; /* O ajustar height */
+         position: relative; /* O cambiar a relativo */
+         /* Requiere JS para mostrar/ocultar y ajustar content */
+     }
+     .content {
+         margin-left: 0; /* Sin margen si la sidebar es relativa/overlay */
+         width: 100%;
+         padding: 15px;
+     }
+      .header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 10px;
+      }
+      .controls {
+          flex-direction: column;
+      }
+      .btn {
+          width: 100%; /* Botones ocupan todo el ancho */
+      }
 }
