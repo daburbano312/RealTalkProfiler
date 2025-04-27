@@ -183,6 +183,50 @@ def logout():
 def index():
     return render_template("index.html")
 
+# Ruta para ver el historial de llamadas
+@app.route("/historial")
+@login_required
+def historial():
+    return render_template("historial.html")
+
+
+# Ruta para obtener el historial de llamadas en formato JSON
+@app.route("/api/historial", methods=['GET'])
+@login_required
+def obtener_historial():
+    client_id = request.args.get('client_id', None)
+    conn = None
+    try:
+        conn = sqlite3.connect("data/inmuebles.db")
+        c = conn.cursor()
+
+        # Si client_id es proporcionado, filtramos
+        if client_id:
+            c.execute("SELECT client_id, call_name, transcriptions FROM historial WHERE client_id = ?", (client_id,))
+        else:
+            c.execute("SELECT client_id, call_name, transcriptions FROM historial")
+
+        historial_data = c.fetchall()
+
+        # Formatear el historial
+        historial_list = []
+        for data in historial_data:
+            historial_list.append({
+                "client_id": data[0],
+                "call_name": data[1],
+                "transcriptions": json.loads(data[2])  # Asegúrate de convertir las transcripciones a JSON
+            })
+
+        return jsonify(historial_list)  # Asegúrate de devolver un JSON válido
+    except sqlite3.Error as e:
+        print(f"Error al obtener historial: {e}")
+        return jsonify({"error": "Error al obtener historial."}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+
 @app.route("/proyectos")
 @login_required
 def proyectos():
@@ -212,6 +256,7 @@ def obtener_proyectos():
     finally:
         if conn:
             conn.close()
+
 
 @app.route("/api/historial/<client_id>", methods=["GET"])
 @login_required

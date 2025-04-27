@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historial de Llamadas</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.1/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div class="main-container">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('index') }}" class="logo-link">
+                 <h1 class="logo">
+                     <i class="fas fa-headset"></i> <span>RealTalk Profiler</span>
+                 </h1>
+            </a>
+        </div>
+        <nav class="menu">
+            <a href="{{ url_for('index') }}" class="menu-item {% if request.endpoint == 'index' %}active{% endif %}" id="dashboardLink">
+                <i class="fas fa-tachometer-alt fa-fw"></i> <span class="menu-text">Dashboard</span>
+            </a>
+            <a href="{{ url_for('proyectos') }}" class="menu-item {% if request.endpoint == 'proyectos' %}active{% endif %}" id="projectsLink">
+                <i class="fas fa-building fa-fw"></i> <span class="menu-text">Proyectos</span>
+            </a>
+            <a href="{{ url_for('historial') }}" class="menu-item {% if request.endpoint == 'historial' %}active{% endif %}" id="historyLink">
+                <i class="fas fa-history fa-fw"></i> <span class="menu-text">Historial de Llamadas</span>
+            </a>
+        </nav>
+
+        <!-- Logout Section -->
+        <div class="user-info" style="padding: 10px; color: #eee; text-align: center;">
+            <p>Hola, {{ current_user.email }}</p>
+            <a href="{{ url_for('logout') }}" class="menu-item" style="color: #ffc107; text-decoration: none;">
+                <i class="fas fa-sign-out-alt fa-fw"></i> <span class="menu-text">Cerrar Sesión</span>
+            </a>
+        </div>
+    </div>
+
+    <div class="content">
+        <h1>Historial de Llamadas</h1>
+
+        <div class="filter-bar">
+            <label for="client-id">Buscar por Cédula del Cliente:</label>
+            <input type="text" id="client-id" placeholder="Ingrese la cédula del cliente">
+            <button id="filter-btn" class="btn btn-filter"><i class="fas fa-filter"></i> Filtrar</button>
+            <button id="reset-btn" class="btn btn-secondary"><i class="fas fa-undo"></i> Limpiar</button>
+        </div>
+
+        <!-- Botones de Exportación -->
+        <button id="export-pdf-btn" class="btn btn-export"><i class="fas fa-file-pdf"></i> Exportar a PDF</button>
+        <button id="export-excel-btn" class="btn btn-export"><i class="fas fa-file-excel"></i> Exportar a Excel</button>
+
+        <div id="history-list" class="projects-container">
+            <p class="loading-message">Cargando historial...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const historyListDiv = document.getElementById('history-list');
+        const filterBtn = document.getElementById('filter-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const clientIdInput = document.getElementById('client-id');
+        const exportPdfBtn = document.getElementById('export-pdf-btn');
+        const exportExcelBtn = document.getElementById('export-excel-btn');
+
+        // Función para mostrar el historial
+        function displayHistory(historyData) {
+            historyListDiv.innerHTML = '';
+
+            if (!Array.isArray(historyData) || historyData.length === 0) {
+                historyListDiv.innerHTML = '<p class="info-message">No se encontraron llamadas para este cliente.</p>';
+                return;
+            }
+
+            historyData.forEach(call => {
+                const historyCard = document.createElement('div');
+                historyCard.classList.add('project-card');
+                
+                historyCard.innerHTML = `
+                    <div class="project-card-header">
+                        <h3>Cliente: ${call.client_id || 'Sin ID'}</h3>
+                        <div class="call-name">Llamada: ${call.call_name}</div>
+                    </div>
+                    <p class="description">
+                        Transcripciones:
+                        <ul>
+                            ${call.transcriptions.map(t => `<li>${t}</li>`).join('')}
+                        </ul>
+                    </p>
+                `;
+                
+                historyListDiv.appendChild(historyCard);
+            });
+        }
+
+        // Función para obtener el historial desde la API
+        async function fetchHistory(clientId = '') {
+            historyListDiv.innerHTML = '<p class="loading-message">Cargando historial...</p>';
+
+            const url = new URL('/api/historial', window.location.origin);
+            if (clientId) {
+                url.searchParams.append('client_id', clientId);
+            }
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error('Error al cargar historial.');
+                }
+                const data = await response.json();
+                displayHistory(data); // Mostrar el historial recibido
+            } catch (error) {
+                console.error("Error fetching history:", error);
+                historyListDiv.innerHTML = `<p class="error-message">Error al cargar historial: ${error.message}. Intenta de nuevo más tarde.</p>`;
+            }
+        }
+
+        async function fetchHistoryData(clientId = '') {
+        const url = new URL('/api/historial', window.location.origin);
+        if (clientId) {
+            url.searchParams.append('client_id', clientId);
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+        return data;
+    }
+
+    // Función de exportación a PDF
+    exportPdfBtn.addEventListener('click', async () => {
+        const historyData = await fetchHistoryData();  // Obtener los datos del historial
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        doc.setFontSize(16);
+        doc.text('Historial de Llamadas', 20, 20);
+        
+        let y = 30; 
+
+        historyData.forEach(call => {
+            doc.setFontSize(12);
+            doc.text(`Cliente: ${call.client_id || 'Sin ID'}`, 20, y);
+            y += 10;
+            doc.text(`Llamada: ${call.call_name}`, 20, y);
+            y += 10;
+            
+            doc.text('Transcripciones:', 20, y);
+            y += 5;
+
+            call.transcriptions.forEach(t => {
+                doc.text(`- ${t}`, 25, y);
+                y += 5;
+            });
+
+            y += 10; // Espacio entre llamadas
+        });
+
+        doc.save('historial_llamadas.pdf');
+    });
+
+    // Función de exportación a Excel
+    exportExcelBtn.addEventListener('click', async () => {
+        const historyData = await fetchHistoryData();  // Obtener los datos del historial
+        
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(historyData); // Usamos json_to_sheet en lugar de table_to_sheet
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Historial de Llamadas');
+        XLSX.writeFile(wb, 'historial_llamadas.xlsx');
+    });
+    
+        // Evento para filtrar por cédula
+        filterBtn.addEventListener('click', () => {
+            const clientId = clientIdInput.value;
+            fetchHistory(clientId);
+        });
+
+        // Evento para limpiar el filtro
+        resetBtn.addEventListener('click', () => {
+            clientIdInput.value = '';
+            fetchHistory();
+        });
+
+        // Cargar todo el historial al inicio
+        fetchHistory();
+    });
+</script>
+
+</body>
+</html>

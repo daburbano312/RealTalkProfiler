@@ -124,11 +124,11 @@ document.addEventListener('DOMContentLoaded', () => {
         btnStart.addEventListener('click', () => {
             if (isConnected) {
                 const cedula = prompt("Por favor, ingrese la cédula del cliente:");
-    
+
                 if (cedula && cedula.trim() !== "") {
                     console.log('Emitiendo start_recording con cédula:', cedula.trim());
                     socket.emit('start_recording', { cedula: cedula.trim() });
-                    window.currentCedula = cedula.trim(); // 🚨 NUEVO: guardar cédula para luego usarla
+                    window.currentCedula = cedula.trim(); // 🚨 Guardar cédula globalmente
                     updateStatus('Iniciando grabación...', 'info');
                     setRecordingState(true);
                     clearPlaceholders();
@@ -141,7 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    
 
     if (btnStop) {
         btnStop.addEventListener('click', () => {
@@ -150,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 socket.emit('stop_recording');
                 updateStatus('Deteniendo grabación...', 'info');
                 setRecordingState(false);
-    
+
                 // 🚨 NUEVO: Consumir automáticamente la API de historial al detener
                 if (window.currentCedula && window.currentCedula.trim() !== "") {
                     fetch(`/api/historial/${window.currentCedula.trim()}`)
@@ -158,24 +157,82 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (!response.ok) {
                                 throw new Error('Error al guardar historial en la base de datos.');
                             }
-                            return response.json(); // Aunque no lo vamos a usar
+                            return response.json();
                         })
                         .then(data => {
                             console.log('Historial guardado correctamente en la base de datos.');
+
+                            // 🚨 Mostrar notificación de éxito (Toast)
+                            showToast("Historial guardado correctamente.", "success");
                         })
                         .catch(error => {
                             console.error('Error al consumir API de historial:', error);
+                            showToast("Error al guardar historial.", "error");
                         });
                 } else {
                     console.warn('⚠ No hay cédula registrada para guardar historial.');
                 }
-                // 🚨 Fin de NUEVO
             } else {
                 updateStatus('No conectado al servidor.', 'error');
             }
         });
     }
+
+    // 🚨 NUEVO: Función para mostrar el Toast
+    function showToast(message, type) {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
     
+        // Crear el botón "Ver Historial"
+        const viewButton = document.createElement('button');
+        viewButton.textContent = 'Ver Historial';
+        viewButton.style.marginLeft = '10px';
+        viewButton.style.padding = '5px 10px';
+        viewButton.style.backgroundColor = '#007bff';
+        viewButton.style.color = 'white';
+        viewButton.style.border = 'none';
+        viewButton.style.borderRadius = '5px';
+        viewButton.style.cursor = 'pointer';
+    
+        // Función para redirigir al historial
+        viewButton.addEventListener('click', () => {
+            const cedula = window.currentCedula;  // Usamos la cédula guardada globalmente
+            if (cedula) {
+                // Redirigir al historial usando la cédula del cliente
+                window.location.href = `/api/historial/${cedula}`;
+            }
+        });
+    
+        // Estilo básico para el Toast (puedes personalizar)
+        toast.style.position = 'fixed';
+        toast.style.bottom = '20px';
+        toast.style.left = '50%';
+        toast.style.transform = 'translateX(-50%)';
+        toast.style.backgroundColor = type === "success" ? '#28a745' : '#dc3545';
+        toast.style.color = 'white';
+        toast.style.padding = '10px 20px';
+        toast.style.borderRadius = '5px';
+        toast.style.fontSize = '16px';
+        toast.style.zIndex = '9999';
+        toast.style.display = 'flex';
+        toast.style.alignItems = 'center';
+        toast.style.justifyContent = 'space-between';
+    
+        // Añadir el botón al toast
+        toast.appendChild(viewButton);
+    
+        // Mostrar el toast en la pantalla
+        document.body.appendChild(toast);
+    
+        // Desaparecer el toast después de 3 segundos
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                document.body.removeChild(toast);
+            }, 500);
+        }, 3000);
+    }    
 
     // --- Inicialización ---
     updateStatus('Intentando conectar...', 'info');
