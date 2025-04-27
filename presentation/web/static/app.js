@@ -1,6 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Intenta conectar a Socket.IO (asume que el servidor Flask/SocketIO está en el mismo host/puerto)
-    // Si tu servidor está en otro lugar, reemplaza con la URL: const socket = io('http://tu-servidor.com');
     const socket = io();
 
     // --- Referencias a elementos del DOM ---
@@ -22,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateStatus(message, type = 'info') {
         if (statusDiv) {
             statusDiv.textContent = message;
-            statusDiv.className = `status-indicator status-${type}`; // Para estilizar diferente (info, success, error)
+            statusDiv.className = `status-indicator status-${type}`;
         }
         console.log(`Status: ${message}`);
     }
@@ -35,8 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
             frequencyAnimation.classList.toggle('active', recording);
         }
         if (!recording) {
-            // Resetear placeholders si no se está grabando
-             resetOutputsToWaiting();
+            resetOutputsToWaiting();
         }
     }
 
@@ -46,19 +43,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (keywordsOutputP) keywordsOutputP.textContent = '...';
         if (suggestionOutputP) suggestionOutputP.textContent = '...';
         if (suggestionSpinner) suggestionSpinner.style.display = 'none';
-        // Limpiar clases de placeholder si se añadieron
         document.querySelectorAll('.output-placeholder').forEach(el => el.classList.add('output-placeholder'));
     }
 
-     function clearPlaceholders() {
+    function clearPlaceholders() {
         document.querySelectorAll('.output-placeholder').forEach(el => el.classList.remove('output-placeholder'));
-     }
+    }
 
     // --- Eventos de Socket.IO ---
     socket.on('connect', () => {
         isConnected = true;
         updateStatus('Conectado al servidor.', 'success');
-        setRecordingState(false); // Asegurar estado inicial correcto
+        setRecordingState(false);
         resetOutputsToWaiting();
     });
 
@@ -66,33 +62,32 @@ document.addEventListener('DOMContentLoaded', () => {
         isConnected = false;
         updateStatus('Desconectado del servidor. Intentando reconectar...', 'error');
         setRecordingState(false);
-        isRecording = false; // Forzar estado
+        isRecording = false;
     });
 
     socket.on('connect_error', (err) => {
         isConnected = false;
         updateStatus(`Error de conexión: ${err.message}`, 'error');
         setRecordingState(false);
-         isRecording = false; // Forzar estado
+        isRecording = false;
     });
 
     socket.on('status', (data) => {
         updateStatus(data.message, 'info');
-        // Actualizar estado basado en mensajes específicos del backend
         if (data.message.includes("Grabación iniciada")) {
             setRecordingState(true);
-            clearPlaceholders(); // Limpiar placeholders al iniciar
-            outputP.textContent = "Escuchando..."; // Mensaje inicial
+            clearPlaceholders();
+            outputP.textContent = "Escuchando...";
         } else if (data.message.includes("Grabación detenida")) {
             setRecordingState(false);
         } else if (data.message.includes("ya está en curso")) {
-             setRecordingState(true); // Corregir estado si estaba desincronizado
+            setRecordingState(true);
         }
     });
 
     socket.on('transcription', (text) => {
         if (outputP) {
-            outputP.textContent = text || outputP.textContent; // Mostrar texto o mantener el anterior si es vacío
+            outputP.textContent = text || outputP.textContent;
             if (text) outputP.classList.remove('output-placeholder');
         }
     });
@@ -101,11 +96,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (emotionOutputP) {
             emotionOutputP.textContent = data.emotion || 'No detectada';
             emotionOutputP.classList.remove('output-placeholder');
-            // Podrías mostrar más detalles si quieres, ej:
-            // const details = Object.entries(data.probabilities)
-            //     .map(([key, value]) => `${key}: ${Math.round(value * 100)}%`)
-            //     .join(', ');
-            // document.getElementById('emotionDetails').textContent = details;
         }
     });
 
@@ -118,35 +108,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     socket.on('suggestion', (data) => {
         if (suggestionOutputP) {
-             suggestionOutputP.textContent = data.text || 'No se pudo generar sugerencia.';
-             suggestionOutputP.classList.remove('output-placeholder');
+            suggestionOutputP.textContent = data.text || 'No se pudo generar sugerencia.';
+            suggestionOutputP.classList.remove('output-placeholder');
         }
-        if (suggestionSpinner) suggestionSpinner.style.display = 'none'; // Ocultar spinner
+        if (suggestionSpinner) suggestionSpinner.style.display = 'none';
     });
 
-    // Mensaje si el backend indica que está generando sugerencia (opcional)
     socket.on('generating_suggestion', () => {
         if (suggestionOutputP) suggestionOutputP.textContent = 'Generando recomendación...';
-        if (suggestionSpinner) suggestionSpinner.style.display = 'inline-block'; // Mostrar spinner
+        if (suggestionSpinner) suggestionSpinner.style.display = 'inline-block';
     });
-
 
     // --- Eventos de los Botones ---
     if (btnStart) {
         btnStart.addEventListener('click', () => {
             if (isConnected) {
-                console.log('Emitiendo start_recording');
-                socket.emit('start_recording');
-                updateStatus('Iniciando grabación...', 'info');
-                // El estado de los botones se actualizará con la respuesta 'status' del servidor
-                setRecordingState(true); // Actualización optimista
-                clearPlaceholders();
-                 outputP.textContent = "Escuchando...";
+                const cedula = prompt("Por favor, ingrese la cédula del cliente:");
+    
+                if (cedula && cedula.trim() !== "") {
+                    console.log('Emitiendo start_recording con cédula:', cedula.trim());
+                    socket.emit('start_recording', { cedula: cedula.trim() });
+                    window.currentCedula = cedula.trim(); // 🚨 NUEVO: guardar cédula para luego usarla
+                    updateStatus('Iniciando grabación...', 'info');
+                    setRecordingState(true);
+                    clearPlaceholders();
+                    outputP.textContent = "Escuchando...";
+                } else {
+                    alert("Debe ingresar una cédula válida para iniciar la grabación.");
+                }
             } else {
                 updateStatus('No conectado al servidor.', 'error');
             }
         });
     }
+    
 
     if (btnStop) {
         btnStop.addEventListener('click', () => {
@@ -154,16 +149,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Emitiendo stop_recording');
                 socket.emit('stop_recording');
                 updateStatus('Deteniendo grabación...', 'info');
-                // El estado de los botones se actualizará con la respuesta 'status' del servidor
-                setRecordingState(false); // Actualización optimista
+                setRecordingState(false);
+    
+                // 🚨 NUEVO: Consumir automáticamente la API de historial al detener
+                if (window.currentCedula && window.currentCedula.trim() !== "") {
+                    fetch(`/api/historial/${window.currentCedula.trim()}`)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Error al guardar historial en la base de datos.');
+                            }
+                            return response.json(); // Aunque no lo vamos a usar
+                        })
+                        .then(data => {
+                            console.log('Historial guardado correctamente en la base de datos.');
+                        })
+                        .catch(error => {
+                            console.error('Error al consumir API de historial:', error);
+                        });
+                } else {
+                    console.warn('⚠ No hay cédula registrada para guardar historial.');
+                }
+                // 🚨 Fin de NUEVO
             } else {
                 updateStatus('No conectado al servidor.', 'error');
             }
         });
     }
+    
 
     // --- Inicialización ---
     updateStatus('Intentando conectar...', 'info');
-    setRecordingState(false); // Estado inicial seguro
+    setRecordingState(false);
 
 }); // Fin de DOMContentLoaded

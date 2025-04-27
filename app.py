@@ -3,6 +3,7 @@ from flask_socketio import SocketIO, emit
 from threading import Thread
 import os
 import sqlite3
+import json
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -217,7 +218,45 @@ def obtener_proyectos():
 def obtener_historial_cliente(client_id):
     historial = get_history_use_case.get_client_history(client_id)
     if historial:
-        return jsonify(historial.to_dict())
+        data = historial.to_dict()
+
+        try:
+            conn = sqlite3.connect("data/inmuebles.db")
+            c = conn.cursor()
+
+            for call_name, call_data in data["calls"].items():
+                # Verificar si ya existe el registro
+                c.execute('''
+                    SELECT id FROM historial WHERE client_id = ? AND call_name = ?
+                ''', (data["client_id"], call_name))
+                existing = c.fetchone()
+
+                transcriptions = json.dumps(call_data.get("transcriptions", []))
+                emotions = json.dumps(call_data.get("emotions", []))
+                suggestions = json.dumps(call_data.get("suggestions", []))
+
+                if existing:
+                    # Si existe, actualizar
+                    print(f"📝 Actualizando historial de '{call_name}' para '{data['client_id']}'")
+                    c.execute('''
+                        UPDATE historial
+                        SET transcriptions = ?, emotions = ?, suggestions = ?
+                        WHERE id = ?
+                    ''', (transcriptions, emotions, suggestions, existing[0]))
+                else:
+                    # Si no existe, insertar
+                    print(f"➕ Insertando nueva llamada '{call_name}' para '{data['client_id']}'")
+                    c.execute('''
+                        INSERT INTO historial (client_id, call_name, transcriptions, emotions, suggestions)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (data["client_id"], call_name, transcriptions, emotions, suggestions))
+
+            conn.commit()
+            conn.close()
+        except sqlite3.Error as e:
+            print(f"Error guardando historial en la BD: {e}")
+
+        return jsonify(data)
     else:
         return jsonify({"message": "No se encontró historial."}), 404
 
@@ -240,7 +279,12 @@ def start_recording(data=None):
         emit("status", {"message": "Error: debes iniciar sesión para grabar."})
         return
 
-    client_id_input = data["client_id"] if data and "client_id" in data else "cliente_demo"
+    # PEDIR explícitamente la cédula
+    if not data or "cedula" not in data:
+        emit("status", {"message": "Error: debes enviar la cédula del cliente."})
+        return
+
+    client_id_input = data["cedula"]
 
     if not recording_active:
         streamer = AudioStreamer(lambda chunk: handle_audio(chunk))
