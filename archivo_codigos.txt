@@ -1,0 +1,944 @@
+from flask import Flask, render_template, jsonify
+from flask_socketio import SocketIO, emit
+from threading import Thread
+import os
+import sqlite3
+from flask_cors import CORS
+
+from core.use_cases.transcribe_stream import TranscriptionUseCase
+from infrastructure.audio.vosk_speech_to_text import VoskSpeechToText
+from interfaces.audio.audio_streamer import AudioStreamer
+from infrastructure.emotion.text_emotion_detector import TextEmotionAnalyzer
+from infrastructure.emotion.keyword_extractor import KeywordExtractor
+from infrastructure.ai.openai_recommendation_engine import OpenAIRecommendationEngine  # ✅ NUEVO
+from dotenv import load_dotenv
+load_dotenv()
+
+# 🧠 Módulos de análisis
+text_emotion_analyzer = TextEmotionAnalyzer()
+keyword_extractor = KeywordExtractor()
+openai_api_key = os.getenv("OPENAI_API_KEY")  # Asegúrate de definir esta variable de entorno
+
+if not openai_api_key:
+    raise ValueError("❌ No se encontró la variable de entorno OPENAI_API_KEY. Verifica tu archivo .env o el entorno.")
+
+recommendation_engine = OpenAIRecommendationEngine(api_key=openai_api_key)
+
+emotion_word_buffer = []
+MAX_EMOTION_WORDS = 15
+
+# 🔧 Configuración de Flask
+app = Flask(__name__,
+            template_folder="presentation/web/templates",
+            static_folder="presentation/web/static")
+socketio = SocketIO(app, cors_allowed_origins="*")
+CORS(app)
+
+# 🔤 Transcripción
+speech_to_text = VoskSpeechToText()
+transcriber = TranscriptionUseCase(speech_to_text)
+
+# Variable global para el hilo de grabación
+recording_thread = None
+recording_active = False  # Bandera para controlar si se está grabando
+
+# 📞 Procesamiento de audio
+def handle_audio(audio_chunk):
+    global emotion_word_buffer, recording_active
+
+    if not recording_active:
+        # Si la grabación fue detenida, ignoramos el procesamiento
+        return
+
+    if speech_to_text.accept_waveform(audio_chunk):
+        result = speech_to_text.get_result()
+        text = result.get("text", "").strip()
+
+        if text:
+            print(f"✅ Texto final: {text}")
+            socketio.emit("transcription", text)
+
+            # 🧠 Acumulamos palabras para análisis emocional (sin afectar transcripción)
+            words = text.split()
+            emotion_word_buffer += words
+            print(f"🧠 Palabras acumuladas: {len(emotion_word_buffer)}")
+
+            if len(emotion_word_buffer) >= MAX_EMOTION_WORDS:
+                full_text = " ".join(emotion_word_buffer[:MAX_EMOTION_WORDS])
+
+                # 🎭 Emoción
+                emotion_result = text_emotion_analyzer.analyze(full_text)
+                print(f"🎭 Emoción detectada: {emotion_result['emotion']}")
+                socketio.emit("emotion", emotion_result)
+
+                # 🔑 Palabras clave
+                keywords = keyword_extractor.extract_keywords(full_text)
+                print(f"🔑 Palabras clave: {keywords}")
+                socketio.emit("keywords", {"keywords": keywords})
+
+                # 📢 Generar sugerencia
+                suggestion = recommendation_engine.generate_advice(
+                    emotion_result['emotion'],
+                    keywords,
+                    full_text
+                )
+                print(f"📢 Sugerencia generada: {suggestion}")
+                socketio.emit("suggestion", {"text": suggestion})
+
+                # 🧹 Limpiar buffer
+                emotion_word_buffer = emotion_word_buffer[MAX_EMOTION_WORDS:]
+
+# 🎙️ Iniciar el streaming de audio
+streamer = AudioStreamer(handle_audio)
+
+# Página principal
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@socketio.on("connect")
+def connect():
+    print("✅ Cliente conectado vía WebSocket")
+
+# Ruta para la página de proyectos
+@app.route("/proyectos")
+def proyectos():
+    return render_template("projects.html")
+
+# Ruta para obtener los proyectos desde la base de datos
+@app.route("/api/proyectos", methods=['GET'])
+def obtener_proyectos():
+    try:
+        # Conectar a la base de datos
+        conn = sqlite3.connect("data/inmuebles.db")
+        c = conn.cursor()
+
+        # Obtener los proyectos desde la base de datos
+        c.execute("SELECT id, nombre, ubicacion, precio, descripcion FROM proyectos")
+        proyectos = c.fetchall()
+        conn.close()
+
+        # Verificar si hay proyectos y devolverlos como JSON
+        if proyectos:
+            proyectos_list = [
+                {
+                    "id": proyecto[0],
+                    "nombre": proyecto[1],
+                    "ubicacion": proyecto[2],
+                    "precio": proyecto[3],
+                    "descripcion": proyecto[4]
+                }
+                for proyecto in proyectos
+            ]
+            return jsonify(proyectos_list)
+        else:
+            return jsonify({"message": "No se encontraron proyectos."}), 404
+
+    except sqlite3.Error as e:
+        return jsonify({"error": f"Error en la base de datos: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Ocurrió un error inesperado: {str(e)}"}), 500   
+
+@socketio.on("start_recording")
+def start_recording():
+    global recording_thread, recording_active
+    if not recording_active:
+        recording_active = True
+        print("🚀 Iniciando grabación...")
+        recording_thread = Thread(target=streamer.start_stream)
+        recording_thread.start()
+        emit("status", {"message": "Grabación iniciada."})
+    else:
+        emit("status", {"message": "La grabación ya está en curso."})
+
+@socketio.on("stop_recording")
+def stop_recording():
+    global recording_active
+    if recording_active:
+        print("⏹️ Deteniendo grabación...")
+        recording_active = False
+        streamer.stop_stream()
+        emit("status", {"message": "Grabación detenida."})
+    else:
+        emit("status", {"message": "No hay grabación en curso."})
+
+# 🚀 Ejecutar servidor
+if __name__ == "__main__":
+    print("🌐 Levantando servidor Flask + SocketIO en puerto 5000")
+    socketio.run(app, debug=True)
+import sqlite3
+import os
+
+# Asegurarse de que exista la carpeta 'data'
+if not os.path.exists("data"):
+    os.makedirs("data")
+
+# Conectar a la base de datos (se creará si no existe)
+conn = sqlite3.connect("data/inmuebles.db")
+c = conn.cursor()
+
+# Crear la tabla 'proyectos'
+c.execute('''
+    CREATE TABLE IF NOT EXISTS proyectos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        ubicacion TEXT NOT NULL,
+        precio TEXT NOT NULL,
+        descripcion TEXT
+    )
+''')
+
+# Insertar algunos registros de ejemplo
+proyectos = [
+    ("Residencial El Poblado", "El Poblado", "800,000,000 COP", "Condominio de lujo con amplias zonas comunes y seguridad 24 horas."),
+    ("Torres de La 80", "La 80", "550,000,000 COP", "Viviendas modernas con acceso a transporte público y colegios cercanos."),
+    ("Villas de Belén", "Belén", "320,000,000 COP", "Urbanización tranquila con acceso a parques y centros comerciales."),
+    ("Condominio Valle del Lili", "El Tesoro", "1,200,000,000 COP", "Residencial de alto nivel con vistas panorámicas y piscinas privadas."),
+    ("Parques de la Castellana", "Castellana", "400,000,000 COP", "Viviendas accesibles con parques recreativos y zonas deportivas."),
+    ("Condominio Los Alcázares", "Los Alcázares", "650,000,000 COP", "Proyectos residenciales con acabados de lujo y cercanía a universidades."),
+    ("Residencial Suramérica", "Suramericana", "380,000,000 COP", "Conjunto cerrado con seguridad privada y zonas verdes."),
+    ("Las Palmas de Medellín", "Las Palmas", "1,500,000,000 COP", "Exclusivas villas con vistas al valle y acceso privado a la montaña."),
+    ("Residencial Bello Horizonte", "Bello Horizonte", "460,000,000 COP", "Edificación moderna con espacios amplios y zonas comerciales en el sector."),
+    ("Condominio La Mota", "La Mota", "370,000,000 COP", "Viviendas familiares con buena conexión a servicios básicos."),
+    ("El Horizonte", "Robledo", "300,000,000 COP", "Urbanización cerca de colegios y supermercados, ideal para familias."),
+    ("Villas de los Balsos", "Los Balsos", "900,000,000 COP", "Condos de lujo con excelentes acabados y ubicación privilegiada."),
+    ("Calle 10 Condos", "La Candelaria", "350,000,000 COP", "Ubicado cerca del centro, con acceso a todo tipo de servicios y transporte."),
+    ("Residencial San Joaquín", "San Joaquín", "420,000,000 COP", "Conjunto de viviendas con espacios amplios y zonas recreativas."),
+    ("Residencial Ciudad del Río", "Ciudad del Río", "950,000,000 COP", "Condominio en zona tranquila y de fácil acceso a la zona comercial."),
+    ("Torres de la 33", "La 33", "680,000,000 COP", "Edificio residencial con excelente vista a la ciudad y espacios modernos."),
+    ("Viviendas del Parque", "Parques del Río", "750,000,000 COP", "Conjunto cerrado con parques y senderos, ideal para actividades al aire libre."),
+    ("Condominio Altos del Chicó", "Chicó", "1,100,000,000 COP", "Residencial de lujo con piscina, gimnasio y zona de BBQ."),
+    ("El Castillo Residencial", "El Castillo", "850,000,000 COP", "Proyectos de alto nivel con acabados de lujo y buena ubicación."),
+    ("Villas San Diego", "San Diego", "420,000,000 COP", "Conjunto cerrado con seguridad y cerca de las mejores universidades."),
+    ("Condominio Santa María", "Santa María de los Ángeles", "520,000,000 COP", "Complejo residencial con acceso a centros comerciales y colegios.")
+]
+
+c.executemany("INSERT INTO proyectos (nombre, ubicacion, precio, descripcion) VALUES (?, ?, ?, ?)", proyectos)
+
+conn.commit()
+conn.close()
+
+print("Base de datos creada y datos insertados correctamente.")
+import pyaudio
+
+p = pyaudio.PyAudio()
+for i in range(p.get_device_count()):
+    dev = p.get_device_info_by_index(i)
+    print(f"Índice {i}: {dev['name']}, {'Entrada' if dev['maxInputChannels'] > 0 else 'Salida'}")
+p.terminate()
+# RealTalk Profiler
+
+**RealTalk Profiler** es una aplicación web en tiempo real que procesa grabaciones de audio, convierte el habla a texto, analiza la emoción del hablante, extrae palabras clave y genera recomendaciones personalizadas para ayudar a los asesores en ventas inmobiliarias. Está construida con Flask, Socket.IO, y utiliza inteligencia artificial para análisis de emociones y recomendaciones.
+
+## Funcionalidades
+
+- **Transcripción en vivo**: Convierte el audio grabado a texto en tiempo real.
+- **Análisis emocional**: Detecta la emoción predominante en el texto transcrito (por ejemplo, felicidad, tristeza, ira).
+- **Extracción de palabras clave**: Identifica las palabras clave más relevantes en el texto transcrito.
+- **Generación de recomendaciones**: Basado en la emoción y las palabras clave, genera recomendaciones personalizadas para asesores de ventas inmobiliarias.
+- **Interfaz web interactiva**: Permite al usuario iniciar y detener grabaciones, y ver la transcripción, emoción, palabras clave y sugerencias en tiempo real.
+
+## Tecnologías utilizadas
+
+- **Flask**: Framework web para el backend.
+- **Flask-SocketIO**: Comunicación en tiempo real a través de WebSockets.
+- **Vosk**: Biblioteca de reconocimiento de voz para convertir audio a texto.
+- **pyaudio**: Para capturar audio desde el micrófono.
+- **OpenAI GPT-4**: Para generar recomendaciones basadas en el análisis de texto.
+- **Pysentimiento**: Analiza la emoción en el texto transcrito.
+- **SQLite**: Base de datos para almacenar proyectos inmobiliarios.
+- **Python-dotenv**: Para gestionar las variables de entorno.
+
+## Instalación
+
+### Requisitos previos
+
+- Python 3.7 o superior
+- Acceso a la API de OpenAI (requiere clave de API)
+
+### Pasos para instalar el proyecto
+
+1. Clona este repositorio en tu máquina local:
+   ```bash
+   git clone <URL del repositorio>
+   cd RealTalk-Profiler
+
+   
+from flask import Flask, render_template, jsonify
+from flask_socketio import SocketIO, emit
+from threading import Thread
+import os
+import sqlite3
+from flask_cors import CORS
+
+from core.use_cases.transcribe_stream import TranscriptionUseCase
+from infrastructure.audio.vosk_speech_to_text import VoskSpeechToText
+from interfaces.audio.audio_streamer import AudioStreamer
+from infrastructure.emotion.text_emotion_detector import TextEmotionAnalyzer
+from infrastructure.emotion.keyword_extractor import KeywordExtractor
+from infrastructure.ai.openai_recommendation_engine import OpenAIRecommendationEngine  # ✅ NUEVO
+from dotenv import load_dotenv
+load_dotenv()
+
+# 🧠 Módulos de análisis
+text_emotion_analyzer = TextEmotionAnalyzer()
+keyword_extractor = KeywordExtractor()
+openai_api_key = os.getenv("OPENAI_API_KEY")  # Asegúrate de definir esta variable de entorno
+
+if not openai_api_key:
+    raise ValueError("❌ No se encontró la variable de entorno OPENAI_API_KEY. Verifica tu archivo .env o el entorno.")
+
+recommendation_engine = OpenAIRecommendationEngine(api_key=openai_api_key)
+
+emotion_word_buffer = []
+MAX_EMOTION_WORDS = 15
+
+# 🔧 Configuración de Flask
+app = Flask(__name__,
+            template_folder="presentation/web/templates",
+            static_folder="presentation/web/static")
+socketio = SocketIO(app, cors_allowed_origins="*")
+CORS(app)
+
+# 🔤 Transcripción
+speech_to_text = VoskSpeechToText()
+transcriber = TranscriptionUseCase(speech_to_text)
+
+# Variable global para el hilo de grabación
+recording_thread = None
+recording_active = False  # Bandera para controlar si se está grabando
+
+# 📞 Procesamiento de audio
+def handle_audio(audio_chunk):
+    global emotion_word_buffer, recording_active
+
+    if not recording_active:
+        # Si la grabación fue detenida, ignoramos el procesamiento
+        return
+
+    if speech_to_text.accept_waveform(audio_chunk):
+        result = speech_to_text.get_result()
+        text = result.get("text", "").strip()
+
+        if text:
+            print(f"✅ Texto final: {text}")
+            socketio.emit("transcription", text)
+
+            # 🧠 Acumulamos palabras para análisis emocional (sin afectar transcripción)
+            words = text.split()
+            emotion_word_buffer += words
+            print(f"🧠 Palabras acumuladas: {len(emotion_word_buffer)}")
+
+            if len(emotion_word_buffer) >= MAX_EMOTION_WORDS:
+                full_text = " ".join(emotion_word_buffer[:MAX_EMOTION_WORDS])
+
+                # 🎭 Emoción
+                emotion_result = text_emotion_analyzer.analyze(full_text)
+                print(f"🎭 Emoción detectada: {emotion_result['emotion']}")
+                socketio.emit("emotion", emotion_result)
+
+                # 🔑 Palabras clave
+                keywords = keyword_extractor.extract_keywords(full_text)
+                print(f"🔑 Palabras clave: {keywords}")
+                socketio.emit("keywords", {"keywords": keywords})
+
+                # 📢 Generar sugerencia
+                suggestion = recommendation_engine.generate_advice(
+                    emotion_result['emotion'],
+                    keywords,
+                    full_text
+                )
+                print(f"📢 Sugerencia generada: {suggestion}")
+                socketio.emit("suggestion", {"text": suggestion})
+
+                # 🧹 Limpiar buffer
+                emotion_word_buffer = emotion_word_buffer[MAX_EMOTION_WORDS:]
+
+# 🎙️ Iniciar el streaming de audio
+streamer = AudioStreamer(handle_audio)
+
+# Página principal
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@socketio.on("connect")
+def connect():
+    print("✅ Cliente conectado vía WebSocket")
+
+# Ruta para la página de proyectos
+@app.route("/proyectos")
+def proyectos():
+    return render_template("projects.html")
+
+# Ruta para obtener los proyectos desde la base de datos
+@app.route("/api/proyectos", methods=['GET'])
+def obtener_proyectos():
+    try:
+        # Conectar a la base de datos
+        conn = sqlite3.connect("data/inmuebles.db")
+        c = conn.cursor()
+
+        # Obtener los proyectos desde la base de datos
+        c.execute("SELECT id, nombre, ubicacion, precio, descripcion FROM proyectos")
+        proyectos = c.fetchall()
+        conn.close()
+
+        # Verificar si hay proyectos y devolverlos como JSON
+        if proyectos:
+            proyectos_list = [
+                {
+                    "id": proyecto[0],
+                    "nombre": proyecto[1],
+                    "ubicacion": proyecto[2],
+                    "precio": proyecto[3],
+                    "descripcion": proyecto[4]
+                }
+                for proyecto in proyectos
+            ]
+            return jsonify(proyectos_list)
+        else:
+            return jsonify({"message": "No se encontraron proyectos."}), 404
+
+    except sqlite3.Error as e:
+        return jsonify({"error": f"Error en la base de datos: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Ocurrió un error inesperado: {str(e)}"}), 500   
+
+@socketio.on("start_recording")
+def start_recording():
+    global recording_thread, recording_active
+    if not recording_active:
+        recording_active = True
+        print("🚀 Iniciando grabación...")
+        recording_thread = Thread(target=streamer.start_stream)
+        recording_thread.start()
+        emit("status", {"message": "Grabación iniciada."})
+    else:
+        emit("status", {"message": "La grabación ya está en curso."})
+
+@socketio.on("stop_recording")
+def stop_recording():
+    global recording_active
+    if recording_active:
+        print("⏹️ Deteniendo grabación...")
+        recording_active = False
+        streamer.stop_stream()
+        emit("status", {"message": "Grabación detenida."})
+    else:
+        emit("status", {"message": "No hay grabación en curso."})
+
+# 🚀 Ejecutar servidor
+if __name__ == "__main__":
+    print("🌐 Levantando servidor Flask + SocketIO en puerto 5000")
+    socketio.run(app, debug=True)
+import sqlite3
+import os
+
+# Asegurarse de que exista la carpeta 'data'
+if not os.path.exists("data"):
+    os.makedirs("data")
+
+# Conectar a la base de datos (se creará si no existe)
+conn = sqlite3.connect("data/inmuebles.db")
+c = conn.cursor()
+
+# Crear la tabla 'proyectos'
+c.execute('''
+    CREATE TABLE IF NOT EXISTS proyectos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        ubicacion TEXT NOT NULL,
+        precio TEXT NOT NULL,
+        descripcion TEXT
+    )
+''')
+
+# Insertar algunos registros de ejemplo
+proyectos = [
+    ("Residencial El Poblado", "El Poblado", "800,000,000 COP", "Condominio de lujo con amplias zonas comunes y seguridad 24 horas."),
+    ("Torres de La 80", "La 80", "550,000,000 COP", "Viviendas modernas con acceso a transporte público y colegios cercanos."),
+    ("Villas de Belén", "Belén", "320,000,000 COP", "Urbanización tranquila con acceso a parques y centros comerciales."),
+    ("Condominio Valle del Lili", "El Tesoro", "1,200,000,000 COP", "Residencial de alto nivel con vistas panorámicas y piscinas privadas."),
+    ("Parques de la Castellana", "Castellana", "400,000,000 COP", "Viviendas accesibles con parques recreativos y zonas deportivas."),
+    ("Condominio Los Alcázares", "Los Alcázares", "650,000,000 COP", "Proyectos residenciales con acabados de lujo y cercanía a universidades."),
+    ("Residencial Suramérica", "Suramericana", "380,000,000 COP", "Conjunto cerrado con seguridad privada y zonas verdes."),
+    ("Las Palmas de Medellín", "Las Palmas", "1,500,000,000 COP", "Exclusivas villas con vistas al valle y acceso privado a la montaña."),
+    ("Residencial Bello Horizonte", "Bello Horizonte", "460,000,000 COP", "Edificación moderna con espacios amplios y zonas comerciales en el sector."),
+    ("Condominio La Mota", "La Mota", "370,000,000 COP", "Viviendas familiares con buena conexión a servicios básicos."),
+    ("El Horizonte", "Robledo", "300,000,000 COP", "Urbanización cerca de colegios y supermercados, ideal para familias."),
+    ("Villas de los Balsos", "Los Balsos", "900,000,000 COP", "Condos de lujo con excelentes acabados y ubicación privilegiada."),
+    ("Calle 10 Condos", "La Candelaria", "350,000,000 COP", "Ubicado cerca del centro, con acceso a todo tipo de servicios y transporte."),
+    ("Residencial San Joaquín", "San Joaquín", "420,000,000 COP", "Conjunto de viviendas con espacios amplios y zonas recreativas."),
+    ("Residencial Ciudad del Río", "Ciudad del Río", "950,000,000 COP", "Condominio en zona tranquila y de fácil acceso a la zona comercial."),
+    ("Torres de la 33", "La 33", "680,000,000 COP", "Edificio residencial con excelente vista a la ciudad y espacios modernos."),
+    ("Viviendas del Parque", "Parques del Río", "750,000,000 COP", "Conjunto cerrado con parques y senderos, ideal para actividades al aire libre."),
+    ("Condominio Altos del Chicó", "Chicó", "1,100,000,000 COP", "Residencial de lujo con piscina, gimnasio y zona de BBQ."),
+    ("El Castillo Residencial", "El Castillo", "850,000,000 COP", "Proyectos de alto nivel con acabados de lujo y buena ubicación."),
+    ("Villas San Diego", "San Diego", "420,000,000 COP", "Conjunto cerrado con seguridad y cerca de las mejores universidades."),
+    ("Condominio Santa María", "Santa María de los Ángeles", "520,000,000 COP", "Complejo residencial con acceso a centros comerciales y colegios.")
+]
+
+c.executemany("INSERT INTO proyectos (nombre, ubicacion, precio, descripcion) VALUES (?, ?, ?, ?)", proyectos)
+
+conn.commit()
+conn.close()
+
+print("Base de datos creada y datos insertados correctamente.")
+import pyaudio
+
+p = pyaudio.PyAudio()
+for i in range(p.get_device_count()):
+    dev = p.get_device_info_by_index(i)
+    print(f"Índice {i}: {dev['name']}, {'Entrada' if dev['maxInputChannels'] > 0 else 'Salida'}")
+p.terminate()
+# RealTalk Profiler
+
+**RealTalk Profiler** es una aplicación web en tiempo real que procesa grabaciones de audio, convierte el habla a texto, analiza la emoción del hablante, extrae palabras clave y genera recomendaciones personalizadas para ayudar a los asesores en ventas inmobiliarias. Está construida con Flask, Socket.IO, y utiliza inteligencia artificial para análisis de emociones y recomendaciones.
+
+## Funcionalidades
+
+- **Transcripción en vivo**: Convierte el audio grabado a texto en tiempo real.
+- **Análisis emocional**: Detecta la emoción predominante en el texto transcrito (por ejemplo, felicidad, tristeza, ira).
+- **Extracción de palabras clave**: Identifica las palabras clave más relevantes en el texto transcrito.
+- **Generación de recomendaciones**: Basado en la emoción y las palabras clave, genera recomendaciones personalizadas para asesores de ventas inmobiliarias.
+- **Interfaz web interactiva**: Permite al usuario iniciar y detener grabaciones, y ver la transcripción, emoción, palabras clave y sugerencias en tiempo real.
+
+## Tecnologías utilizadas
+
+- **Flask**: Framework web para el backend.
+- **Flask-SocketIO**: Comunicación en tiempo real a través de WebSockets.
+- **Vosk**: Biblioteca de reconocimiento de voz para convertir audio a texto.
+- **pyaudio**: Para capturar audio desde el micrófono.
+- **OpenAI GPT-4**: Para generar recomendaciones basadas en el análisis de texto.
+- **Pysentimiento**: Analiza la emoción en el texto transcrito.
+- **SQLite**: Base de datos para almacenar proyectos inmobiliarios.
+- **Python-dotenv**: Para gestionar las variables de entorno.
+
+## Instalación
+
+### Requisitos previos
+
+- Python 3.7 o superior
+- Acceso a la API de OpenAI (requiere clave de API)
+
+### Pasos para instalar el proyecto
+
+1. Clona este repositorio en tu máquina local:
+   ```bash
+   git clone <URL del repositorio>
+   cd RealTalk-Profiler
+
+   
+from flask import Flask, render_template, jsonify
+from flask_socketio import SocketIO, emit
+from threading import Thread
+import os
+import sqlite3
+from flask_cors import CORS
+
+from core.use_cases.transcribe_stream importFlask==2.2.5
+Flask-SocketIO==5.3.6
+PyAudio==0.2.13
+vosk==0.3.45
+python-dotenv==1.1.0
+openai==1.14.2
+transformers==4.40.1
+torch>=1.13.1
+scikit-learn==1.3.2
+nltk==3.8.1
+class Word:
+    def __init__(self, text: str, start: float, end: float):
+        self.text = text
+        self.start = start
+        self.end = end
+class TranscriptionUseCase:
+    def __init__(self, speech_to_text):
+        self.speech_to_text = speech_to_text
+
+
+    def run(self, audio_chunk):
+        """
+        Procesa un bloque de audio y retorna las nuevas palabras detectadas.
+        """
+        if self.speech_to_text.accept_waveform(audio_chunk):
+            result = self.speech_to_text.get_result()
+            return result.get("text", "")
+        else:
+            partial = self.speech_to_text.get_partial()
+            return partial.get("partial", "")
+import sqlite3
+
+def obtener_proyectos_inmobiliarios():
+    """
+    Consulta la base de datos SQLite y retorna un resumen de proyectos inmobiliarios.
+    """
+    try:
+        conn = sqlite3.connect("data/inmuebles.db")
+        c = conn.cursor()
+        c.execute("SELECT nombre, ubicacion, precio, descripcion FROM proyectos")
+        filas = c.fetchall()
+        conn.close()
+
+        if not filas:
+            return "No se encontraron proyectos inmobiliarios en la base de datos."
+
+        # Crear un resumen para cada proyecto
+        resumen = "\n".join([
+            f"{nombre} - {ubicacion} - {precio}.\n  Descripción: {descripcion}"
+            for nombre, ubicacion, precio, descripcion in filas
+        ])
+        return resumen
+    except Exception as e:
+        return f"Error al consultar la base de datos: {e}"
+import httpx
+from openai import OpenAI
+# Desactivar la verificación SSL (solo para desarrollo)
+OpenAI.verify_ssl_certs = False
+from core.utils.db_utils import obtener_proyectos_inmobiliarios
+
+
+
+class OpenAIRecommendationEngine:
+    def __init__(self, api_key):
+        self.client = OpenAI(api_key=api_key, http_client=httpx.Client(verify=False))
+
+    def generate_advice(self, emotion, keywords, transcript):
+
+        proyectos_info = obtener_proyectos_inmobiliarios()
+        prompt = f"""
+Eres un asesor experto en ventas inmobiliarias. Basado en el siguiente perfil de cliente:
+
+Emoción predominante: {emotion}
+Palabras clave detectadas: {', '.join(keywords)}
+Transcripción de lo que dijo el cliente: "{transcript}"
+Información de proyectos inmobiliarios disponibles:{proyectos_info}
+Genera una recomendación clara y empática para ayudar al asesor a responder mejor a este cliente.
+La respuesta debe ser en español y directa.
+"""
+
+        response = self.client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Asistente de ventas inmobiliarias."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=150
+        )
+
+        return response.choices[0].message.content.strip()
+from vosk import Model, KaldiRecognizer
+import json
+
+class VoskSpeechToText:
+    def __init__(self, model_path="models/vosk/es"):
+        self.model = Model(model_path)
+        self.recognizer = KaldiRecognizer(self.model, 16000)
+
+    def accept_waveform(self, audio_chunk):
+        return self.recognizer.AcceptWaveform(audio_chunk)
+
+    def get_result(self):
+        return json.loads(self.recognizer.Result())
+
+    def get_partial(self):
+        return json.loads(self.recognizer.PartialResult())
+import re
+from collections import Counter
+
+class KeywordExtractor:
+    def __init__(self):
+        self.stopwords = set([
+            "yo", "tú", "él", "ella", "nosotros", "ustedes", "ellos", "ellas",
+            "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las",
+            "por", "un", "para", "con", "no", "una", "su", "al", "lo", "como",
+            "más", "pero", "sus", "le", "ya", "o", "este", "sí", "porque", "esta",
+            "me", "mi", "te", "es", "soy", "estoy", "muy", "gracias", "todo", "eso",
+            "así", "quien", "cual", "donde", "cuando", "que", "qué"
+        ])
+
+    def extract_keywords(self, text, ratio=0.2):
+        """
+        Extrae 1 palabra clave cada 5 palabras habladas (ratio = 0.2).
+        Calcula basado en el total de palabras del texto original.
+        """
+        all_words = re.findall(r'\b\w+\b', text.lower())
+        total_words = len(all_words)
+
+        words_filtered = [w for w in all_words if len(w) > 3 and w not in self.stopwords]
+        most_common = Counter(words_filtered).most_common()
+
+        num_keywords = max(1, int(total_words * ratio))
+        return [word for word, _ in most_common[:num_keywords]]
+from transformers import pipeline
+
+class TextEmotionAnalyzer:
+    def __init__(self):
+        self.pipeline = pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base", top_k=1)
+
+    def analyze(self, text):
+        result = self.pipeline(text)[0][0]
+        return {"emotion": result['label'], "score": result['score']}
+import pyaudio
+
+class AudioStreamer:
+    def __init__(self, callback):
+        self.p = pyaudio.PyAudio()
+        self.stream = None
+        self.callback = callback
+
+    def start_stream(self):
+        self.stream = self.p.open(format=pyaudio.paInt16,
+                                  channels=1,
+                                  rate=16000,
+                                  input=True,
+                                  input_device_index=1,
+                                  frames_per_buffer=4000,
+                                  stream_callback=self._callback)
+        self.stream.start_stream()
+
+    def _callback(self, in_data, frame_count, time_info, status):
+        self.callback(in_data)
+        return (in_data, pyaudio.paContinue)
+
+    def stop_stream(self):
+        self.stream.stop_stream()
+        self.stream.close()
+        self.p.terminate()
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RealTalk Profiler</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <a href="{{ url_for('index') }}" class="logo-link">
+                     <h1 class="logo">
+                         <i class="fas fa-headset"></i> <span>RealTalk Profiler</span>
+                     </h1>
+                </a>
+                </div>
+            <nav class="menu">
+                <a href="{{ url_for('index') }}" class="menu-item {% if request.endpoint == 'index' %}active{% endif %}" id="dashboardLink">
+                    <i class="fas fa-tachometer-alt fa-fw"></i> <span class="menu-text">Dashboard</span>
+                </a>
+                <a href="{{ url_for('proyectos') }}" class="menu-item {% if request.endpoint == 'proyectos' %}active{% endif %}" id="projectsLink">
+                    <i class="fas fa-building fa-fw"></i> <span class="menu-text">Proyectos</span>
+                </a>
+                </nav>
+            </div>
+
+        <div class="content">
+            <div class="header">
+                <div class="title">🧠 Transcripción en vivo</div>
+            </div>
+
+            <div id="status" class="status-indicator">Conectando al servidor...</div>
+            <div class="controls">
+                <button id="btnStart" class="btn btn-start" disabled><i class="fas fa-play"></i> Iniciar Grabación</button>
+                <button id="btnStop" class="btn btn-stop" disabled><i class="fas fa-stop"></i> Detener Grabación</button>
+            </div>
+
+            <div id="frequencyAnimation" class="frequency-animation">
+                <div class="bar"></div> <div class="bar"></div> <div class="bar"></div>
+                <div class="bar"></div> <div class="bar"></div> <div class="bar"></div>
+                <div class="bar"></div> <div class="bar"></div>
+            </div>
+
+            <div id="resultsPanel" class="results-panel">
+                <div class="resultCard">
+                    <div class="icon-container"><i class="fas fa-microphone"></i></div>
+                    <h3>Transcripción</h3>
+                    <p id="output" class="output-placeholder">Esperando inicio de grabación...</p>
+                </div>
+                <div class="resultCard">
+                    <div class="icon-container"><i class="fas fa-smile"></i></div>
+                    <h3>Emoción Detectada</h3>
+                    <p id="emotionOutput" class="output-placeholder">...</p>
+                    <small id="emotionDetails"></small> </div>
+                <div class="resultCard">
+                    <div class="icon-container"><i class="fas fa-key"></i></div>
+                    <h3>Palabras Clave</h3>
+                    <p id="keywordsOutput" class="output-placeholder">...</p>
+                </div>
+                <div class="resultCard full-width-card">
+                    <div class="icon-container"><i class="fas fa-bullhorn"></i></div>
+                    <h3>Recomendación</h3>
+                    <p id="suggestionOutput" class="output-placeholder">...</p>
+                    <div id="suggestionSpinner" class="spinner" style="display: none;"></div> </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html><!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proyectos Inmobiliarios</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+<div class="main-container">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('index') }}" class="logo-link">
+                 <h1 class="logo">
+                     <i class="fas fa-headset"></i> <span>RealTalk Profiler</span>
+                 </h1>
+            </a>
+            </div>
+        <nav class="menu">
+            <a href="{{ url_for('index') }}" class="menu-item {% if request.endpoint == 'index' %}active{% endif %}" id="dashboardLink">
+                <i class="fas fa-tachometer-alt fa-fw"></i> <span class="menu-text">Dashboard</span>
+            </a>
+            <a href="{{ url_for('proyectos') }}" class="menu-item {% if request.endpoint == 'proyectos' %}active{% endif %}" id="projectsLink">
+                <i class="fas fa-building fa-fw"></i> <span class="menu-text">Proyectos</span>
+            </a>
+            </nav>
+        </div>
+
+    <div class="content">
+        <h1>Proyectos Inmobiliarios Disponibles</h1>
+
+        <div class="filter-bar">
+            <label for="min-price">Precio Mínimo (COP):</label>
+            <input type="number" id="min-price" placeholder="Ej: 300000000" min="0" step="10000000"/>
+
+            <label for="max-price">Precio Máximo (COP):</label>
+            <input type="number" id="max-price" placeholder="Ej: 900000000" min="0" step="10000000"/>
+            <button id="filter-btn" class="btn btn-filter"><i class="fas fa-filter"></i> Filtrar</button>
+            <button id="reset-btn" class="btn btn-secondary"><i class="fas fa-undo"></i> Limpiar</button>
+        </div>
+
+        <div id="projects-list" class="projects-container">
+            <p class="loading-message">Cargando proyectos...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const projectsListDiv = document.getElementById('projects-list');
+        const filterBtn = document.getElementById('filter-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const minPriceInput = document.getElementById('min-price');
+        const maxPriceInput = document.getElementById('max-price');
+        // const locationInput = document.getElementById('location-filter'); // Si añades filtro de ubicación
+
+        // --- Función para mostrar los proyectos en tarjetas ---
+        function displayProjects(projectsData) {
+            projectsListDiv.innerHTML = ''; // Limpiar contenido anterior (loading o resultados viejos)
+
+            if (!Array.isArray(projectsData) || projectsData.length === 0) {
+                projectsListDiv.innerHTML = '<p class="info-message">No se encontraron proyectos con los criterios seleccionados.</p>';
+                return;
+            }
+
+            projectsData.forEach(project => {
+                const projectCard = document.createElement('div');
+                projectCard.classList.add('project-card');
+
+                // Formatear precio (asumiendo que el backend ahora envía un número)
+                const formattedPrice = typeof project.precio === 'number'
+                    ? `COP ${project.precio.toLocaleString('es-CO')}`
+                    : project.precio; // Mantener como texto si no es número
+
+                projectCard.innerHTML = `
+                    <div class="project-card-header">
+                        <h3>${project.nombre || 'Sin nombre'}</h3>
+                        <div class="price">${formattedPrice}</div>
+                    </div>
+                    <p class="description">${project.descripcion || 'Sin descripción.'}</p>
+                    <div class="location"><i class="fas fa-map-marker-alt"></i> ${project.ubicacion || 'Ubicación no especificada'}</div>
+                    <div class="card-actions">
+                        <button class="btn btn-details" data-project-id="${project.id}">Ver detalles</button>
+                    </div>
+                `;
+
+                // Añadir funcionalidad al botón "Ver detalles"
+                const detailsButton = projectCard.querySelector('.btn-details');
+                if (detailsButton) {
+                    detailsButton.addEventListener('click', () => {
+                        // Acción placeholder: muestra un alert. Reemplazar con modal, nueva página, etc.
+                        alert(`Detalles del proyecto ID: ${project.id}\nNombre: ${project.nombre}\nPrecio: ${formattedPrice}\nUbicación: ${project.ubicacion}`);
+                        // Aquí podrías abrir un modal con más información, o navegar a otra página.
+                    });
+                }
+
+                projectsListDiv.appendChild(projectCard);
+            });
+        }
+
+        // --- Función para obtener proyectos de la API (con filtros) ---
+        async function fetchProjects(params = {}) {
+            projectsListDiv.innerHTML = '<p class="loading-message">Buscando proyectos...</p>'; // Mostrar feedback
+
+            // Construir URL con query parameters
+            const url = new URL('/api/proyectos', window.location.origin);
+            Object.keys(params).forEach(key => {
+                if (params[key] !== null && params[key] !== undefined && params[key] !== '') {
+                    url.searchParams.append(key, params[key]);
+                }
+            });
+
+            console.log("Fetching:", url.toString()); // Para depuración
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    // Intentar obtener mensaje de error del backend si existe
+                    let errorMsg = `Error al cargar proyectos: ${response.statusText}`;
+                     try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorData.message || errorMsg;
+                    } catch (e) { /* Ignorar si no hay JSON en el error */ }
+                    throw new Error(errorMsg);
+                }
+                const data = await response.json();
+                displayProjects(data); // Mostrar los proyectos recibidos
+            } catch (error) {
+                console.error("Error fetching projects:", error);
+                projectsListDiv.innerHTML = `<p class="error-message">Error al cargar proyectos: ${error.message}. Intenta de nuevo más tarde.</p>`;
+            }
+        }
+
+        // --- Event Listeners para los filtros ---
+        filterBtn.addEventListener('click', () => {
+            const filters = {
+                min_price: minPriceInput.value || null, // Enviar null o string vacío si no hay valor
+                max_price: maxPriceInput.value || null,
+                // location: locationInput.value || null // Si añades filtro de ubicación
+            };
+            fetchProjects(filters);
+        });
+
+        resetBtn.addEventListener('click', () => {
+            minPriceInput.value = '';
+            maxPriceInput.value = '';
+            // locationInput.value = ''; // Si añades filtro de ubicación
+            fetchProjects(); // Cargar todos los proyectos sin filtros
+        });
+
+
+        // --- Carga inicial de proyectos ---
+        fetchProjects();
+
+    }); // Fin de DOMContentLoaded
+</script>
+
+</body>
+</html>
