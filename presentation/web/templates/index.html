@@ -17,7 +17,7 @@
                          <i class="fas fa-headset"></i> <span>RealTalk Profiler</span>
                      </h1>
                 </a>
-                </div>
+            </div>
             <nav class="menu">
                 <a href="{{ url_for('index') }}" class="menu-item {% if request.endpoint == 'index' %}active{% endif %}" id="dashboardLink">
                     <i class="fas fa-tachometer-alt fa-fw"></i> <span class="menu-text">Dashboard</span>
@@ -25,8 +25,16 @@
                 <a href="{{ url_for('proyectos') }}" class="menu-item {% if request.endpoint == 'proyectos' %}active{% endif %}" id="projectsLink">
                     <i class="fas fa-building fa-fw"></i> <span class="menu-text">Proyectos</span>
                 </a>
-                </nav>
+            </nav>
+
+            <!-- Logout Section -->
+            <div class="user-info" style="padding: 10px; color: #eee; text-align: center;">
+                <p>Hola, {{ current_user.email }}</p>
+                <a href="{{ url_for('logout') }}" class="menu-item" style="color: #ffc107; text-decoration: none;">
+                    <i class="fas fa-sign-out-alt fa-fw"></i> <span class="menu-text">Cerrar Sesión</span>
+                </a>
             </div>
+        </div>
 
         <div class="content">
             <div class="header">
@@ -55,7 +63,8 @@
                     <div class="icon-container"><i class="fas fa-smile"></i></div>
                     <h3>Emoción Detectada</h3>
                     <p id="emotionOutput" class="output-placeholder">...</p>
-                    <small id="emotionDetails"></small> </div>
+                    <small id="emotionDetails"></small>
+                </div>
                 <div class="resultCard">
                     <div class="icon-container"><i class="fas fa-key"></i></div>
                     <h3>Palabras Clave</h3>
@@ -65,7 +74,8 @@
                     <div class="icon-container"><i class="fas fa-bullhorn"></i></div>
                     <h3>Recomendación</h3>
                     <p id="suggestionOutput" class="output-placeholder">...</p>
-                    <div id="suggestionSpinner" class="spinner" style="display: none;"></div> </div>
+                    <div id="suggestionSpinner" class="spinner" style="display: none;"></div>
+                </div>
             </div>
         </div>
     </div>
