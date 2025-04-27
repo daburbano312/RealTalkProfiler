@@ -1,9 +1,11 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
 from flask_socketio import SocketIO, emit
 from threading import Thread
 import os
 import sqlite3
 from flask_cors import CORS
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
 # Core y capas
@@ -23,8 +25,8 @@ load_dotenv()
 # 🧠 Módulos de análisis
 text_emotion_analyzer = TextEmotionAnalyzer()
 keyword_extractor = KeywordExtractor()
-
 openai_api_key = os.getenv("OPENAI_API_KEY")
+
 if not openai_api_key:
     raise ValueError("❌ No se encontró la variable de entorno OPENAI_API_KEY. Verifica tu archivo .env o el entorno.")
 
@@ -37,6 +39,7 @@ get_history_use_case = GetHistoryUseCase(history_repo)
 
 # 🔧 Configuración de Flask
 app = Flask(__name__, template_folder="presentation/web/templates", static_folder="presentation/web/static")
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'una-clave-secreta-muy-segura-por-defecto')
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app)
 
@@ -47,13 +50,13 @@ transcriber = TranscriptionUseCase(speech_to_text)
 # 📋 Variables globales
 recording_thread = None
 recording_active = False
-streamer = None  # 🚨 Importante: inicializamos en None
+streamer = None
 current_client_id = None
 current_call_name = None
 emotion_word_buffer = []
 MAX_EMOTION_WORDS = 15
 
-# 📞 Procesamiento de audio
+# 🧠 Manejo de audio
 def handle_audio(audio_chunk):
     global emotion_word_buffer, recording_active, current_client_id, current_call_name
 
@@ -71,20 +74,22 @@ def handle_audio(audio_chunk):
 
             words = text.split()
             emotion_word_buffer += words
-            print(f"🧠 Palabras acumuladas: {len(emotion_word_buffer)}")
 
             if len(emotion_word_buffer) >= MAX_EMOTION_WORDS:
                 full_text = " ".join(emotion_word_buffer[:MAX_EMOTION_WORDS])
 
+                # Emoción
                 emotion_result = text_emotion_analyzer.analyze(full_text)
                 print(f"🎭 Emoción detectada: {emotion_result['emotion']}")
                 socketio.emit("emotion", emotion_result)
                 manage_history_use_case.add_emotion(current_client_id, current_call_name, emotion_result['emotion'], emotion_result.get('score', 1.0))
 
+                # Palabras clave
                 keywords = keyword_extractor.extract_keywords(full_text)
                 print(f"🔑 Palabras clave: {keywords}")
                 socketio.emit("keywords", {"keywords": keywords})
 
+                # Sugerencia
                 suggestion = recommendation_engine.generate_advice(emotion_result['emotion'], keywords, full_text)
                 print(f"📢 Sugerencia generada: {suggestion}")
                 socketio.emit("suggestion", {"text": suggestion})
@@ -92,92 +97,194 @@ def handle_audio(audio_chunk):
 
                 emotion_word_buffer = emotion_word_buffer[MAX_EMOTION_WORDS:]
 
-# 🌎 Rutas web
+streamer = AudioStreamer(handle_audio)
+
+# --- FLASK LOGIN CONFIGURACIÓN ---
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = "Por favor, inicia sesión para acceder a esta página."
+login_manager.login_message_category = "info"
+
+class User(UserMixin):
+    def __init__(self, id, email):
+        self.id = id
+        self.email = email
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = None
+    try:
+        conn = sqlite3.connect("data/inmuebles.db")
+        c = conn.cursor()
+        c.execute("SELECT id, email FROM usuarios WHERE id = ?", (user_id,))
+        user_data = c.fetchone()
+        if user_data:
+            return User(id=user_data[0], email=user_data[1])
+        return None
+    except sqlite3.Error as e:
+        print(f"Error al cargar usuario desde BD: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+# --- RUTAS WEB Y API ---
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        remember = True if request.form.get('remember') else False
+
+        if not email or not password:
+            flash('Se requiere correo y contraseña.', 'warning')
+            return render_template('login.html')
+
+        conn = None
+        try:
+            conn = sqlite3.connect("data/inmuebles.db")
+            c = conn.cursor()
+            c.execute("SELECT id, email, password_hash FROM usuarios WHERE email = ?", (email,))
+            user_data = c.fetchone()
+
+            if user_data and check_password_hash(user_data[2], password):
+                user = User(id=user_data[0], email=user_data[1])
+                login_user(user, remember=remember)
+                flash('Inicio de sesión exitoso.', 'success')
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('index'))
+            else:
+                flash('Credenciales inválidas.', 'danger')
+        except sqlite3.Error as e:
+            print(f"Error de base de datos: {e}")
+            flash('Error en inicio de sesión.', 'danger')
+        finally:
+            if conn:
+                conn.close()
+
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('Has cerrado sesión exitosamente.', 'info')
+    return redirect(url_for('login'))
+
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
 @app.route("/proyectos")
+@login_required
 def proyectos():
     return render_template("projects.html")
 
-@app.route("/api/proyectos", methods=["GET"])
+@app.route("/api/proyectos", methods=['GET'])
+@login_required
 def obtener_proyectos():
+    conn = None
     try:
         conn = sqlite3.connect("data/inmuebles.db")
         c = conn.cursor()
         c.execute("SELECT id, nombre, ubicacion, precio, descripcion FROM proyectos")
-        proyectos = c.fetchall()
-        conn.close()
+        proyectos_db = c.fetchall()
 
-        if proyectos:
+        if proyectos_db:
             proyectos_list = [
-                {"id": proyecto[0], "nombre": proyecto[1], "ubicacion": proyecto[2], "precio": proyecto[3], "descripcion": proyecto[4]}
-                for proyecto in proyectos
+                {"id": p[0], "nombre": p[1], "ubicacion": p[2], "precio": p[3], "descripcion": p[4]}
+                for p in proyectos_db
             ]
             return jsonify(proyectos_list)
         else:
             return jsonify({"message": "No se encontraron proyectos."}), 404
-    except sqlite3.Error as e:
-        return jsonify({"error": f"Error en la base de datos: {str(e)}"}), 500
     except Exception as e:
-        return jsonify({"error": f"Ocurrió un error inesperado: {str(e)}"}), 500
+        print(f"Error: {e}")
+        return jsonify({"error": f"{str(e)}"}), 500
+    finally:
+        if conn:
+            conn.close()
 
-# 📜 Nueva Ruta para consultar el historial de un cliente
 @app.route("/api/historial/<client_id>", methods=["GET"])
+@login_required
 def obtener_historial_cliente(client_id):
     historial = get_history_use_case.get_client_history(client_id)
     if historial:
         return jsonify(historial.to_dict())
     else:
-        return jsonify({"message": "No se encontró historial para este cliente."}), 404
+        return jsonify({"message": "No se encontró historial."}), 404
 
-# 🌐 WebSockets
+# --- SOCKET.IO EVENTOS ---
+
 @socketio.on("connect")
-def connect():
-    print("✅ Cliente conectado vía WebSocket")
+def socket_connect():
+    if not current_user.is_authenticated:
+        print("🔒 Cliente NO autenticado vía WebSocket.")
+        emit("status", {"message": "Conectado, pero necesitas iniciar sesión."})
+    else:
+        print(f"✅ Cliente WebSocket autenticado: {current_user.email}")
+        emit("status", {"message": "Conectado y autenticado."})
 
 @socketio.on("start_recording")
 def start_recording(data=None):
     global recording_thread, recording_active, current_client_id, current_call_name, streamer
 
-    if data and "client_id" in data:
-        client_id_input = data["client_id"]
-    else:
-        client_id_input = "cliente_demo"
+    if not current_user.is_authenticated:
+        emit("status", {"message": "Error: debes iniciar sesión para grabar."})
+        return
+
+    client_id_input = data["client_id"] if data and "client_id" in data else "cliente_demo"
 
     if not recording_active:
-        # 🛠️ RECREAR el streamer nuevo en cada grabación
         streamer = AudioStreamer(lambda chunk: handle_audio(chunk))
-
         recording_active = True
         current_client_id = client_id_input
         current_call_name = manage_history_use_case.start_new_call(current_client_id)
 
-        print(f"🚀 Iniciando grabación para cliente {current_client_id}...")
-        recording_thread = Thread(target=streamer.start_stream)
-        recording_thread.start()
-        emit("status", {"message": f"Grabación iniciada para cliente {current_client_id}."})
+        try:
+            recording_thread = Thread(target=streamer.start_stream)
+            recording_thread.start()
+            emit("status", {"message": "Grabación iniciada."})
+        except Exception as e:
+            print(f"Error al iniciar grabación: {e}")
+            recording_active = False
+            emit("status", {"message": "Error iniciando grabación."})
     else:
         emit("status", {"message": "La grabación ya está en curso."})
 
 @socketio.on("stop_recording")
 def stop_recording():
     global recording_active, streamer
+
+    if not current_user.is_authenticated:
+        emit("status", {"message": "Error: debes iniciar sesión."})
+        return
+
     if recording_active:
-        print("⏹️ Deteniendo grabación...")
         recording_active = False
-
-        if streamer and streamer.stream:
-            streamer.stop_stream()
-            del streamer.stream  # 🛠️ Liberar memoria del stream
-            streamer.stream = None
-
-        emit("status", {"message": "Grabación detenida."})
+        try:
+            if streamer:
+                streamer.stop_stream()
+            emit("status", {"message": "Grabación detenida."})
+        except Exception as e:
+            print(f"Error al detener grabación: {e}")
+            emit("status", {"message": "Error al detener grabación."})
     else:
         emit("status", {"message": "No hay grabación en curso."})
 
-# 🚀 Ejecutar servidor
+@socketio.on("disconnect")
+def socket_disconnect():
+    user_email = current_user.email if current_user.is_authenticated else "Usuario no autenticado"
+    print(f"🔌 Cliente desconectado: {user_email}")
+
+# --- Ejecutar servidor ---
 if __name__ == "__main__":
     print("🌐 Levantando servidor Flask + SocketIO en puerto 5000")
-    socketio.run(app, debug=True)
+    socketio.run(app, debug=True, host="0.0.0.0", port=5000)
