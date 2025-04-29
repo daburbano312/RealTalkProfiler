@@ -6,3 +6,7 @@ pysentimiento==1.0.4
 httpx==0.24.0
 openai==0.27.0
 python-dotenv==1.0.0
+transformers==4.40.1
+torch>=1.13.1
+scikit-learn==1.3.2
+nltk==3.8.1
