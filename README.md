@@ -36,18 +36,22 @@
    cd RealTalk-Profiler
 
 2. Crea un entorno virtual e instálalo:
+   ```bash
    python3 -m venv venv
    source venv/bin/activate  # En Linux/macOS
    venv\Scripts\activate     # En Windows
 
 3. Instala las dependencias necesarias:
+   ```bash
    pip install -r requirements.txt
 
 4. Crea un archivo .env con las siguientes variables:
+   ```bash
    OPENAI_API_KEY=tu-clave-api-de-openai
    FLASK_SECRET_KEY=una-clave-secreta-para-flask
 
 5. Corre la aplicación:
+   ```bash
    flask run
 
 La aplicación estará disponible en http://127.0.0.1:5000/.
