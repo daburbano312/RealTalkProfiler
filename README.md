@@ -1,6 +1,6 @@
 # RealTalk Profiler
 
-**RealTalk Profiler** es una aplicación web en tiempo real que procesa grabaciones de audio, convierte el habla a texto, analiza la emoción del hablante, extrae palabras clave y genera recomendaciones personalizadas para ayudar a los asesores en ventas inmobiliarias. Está construida con Flask, Socket.IO, y utiliza inteligencia artificial para análisis de emociones y recomendaciones.
+**RealTalk Profiler** es una aplicación web en tiempo real diseñada para procesar grabaciones de audio, convertir el habla en texto, analizar la emoción del hablante, extraer palabras clave y generar recomendaciones personalizadas para asesores en ventas inmobiliarias.
 
 ## Funcionalidades
 
@@ -34,3 +34,34 @@
    ```bash
    git clone <URL del repositorio>
    cd RealTalk-Profiler
+
+2. Crea un entorno virtual e instálalo:
+   python3 -m venv venv
+   source venv/bin/activate  # En Linux/macOS
+   venv\Scripts\activate     # En Windows
+
+3. Instala las dependencias necesarias:
+   pip install -r requirements.txt
+
+4. Crea un archivo .env con las siguientes variables:
+   OPENAI_API_KEY=tu-clave-api-de-openai
+   FLASK_SECRET_KEY=una-clave-secreta-para-flask
+
+5. Corre la aplicación:
+   flask run
+
+La aplicación estará disponible en http://127.0.0.1:5000/.
+
+## Uso
+
+Una vez que la aplicación esté corriendo, puedes acceder a las siguientes rutas:
+
+- /: Página principal donde se inicia la grabación y se ve la transcripción en vivo.
+
+- /proyectos: Ver proyectos inmobiliarios disponibles.
+
+- /historial: Ver el historial de las transcripciones.
+
+## Contribuciones
+
+Las contribuciones son bienvenidas. Si deseas contribuir, por favor abre un issue o envía un pull request.
