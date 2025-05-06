@@ -90,11 +90,72 @@ def handle_audio(audio_chunk):
                 print(f"🔑 Palabras clave: {keywords}")
                 socketio.emit("keywords", {"keywords": keywords})
 
+                # --- NUEVO: Generar y emitir Ranking de Proyectos ---
+                print("🧠 Generando ranking de proyectos...")
+                ranked_suggestions_data = recommendation_engine.generate_advice(emotion_result['emotion'], keywords, full_text)
+
+                 # Texto por defecto para la tarjeta de recomendación principal
+                client_facing_recommendation_text = "Analizando las opciones para ti..."
+
+                if ranked_suggestions_data and 'error' not in ranked_suggestions_data:
+                    print(f"🏆 Ranking generado: {ranked_suggestions_data}")
+                    # Emitir el ranking al frontend
+                    socketio.emit("ranked_suggestions", ranked_suggestions_data)
+                    # Guardar ranking en el historial en memoria
+                    try:
+                        manage_history_use_case.add_ranked_suggestion(current_client_id, current_call_name, ranked_suggestions_data)
+                    except Exception as e:
+                         print(f"Error al añadir ranking al historial en memoria: {e}")
+
+                # --- IDENTIFICAR EL MEJOR PROYECTO Y FORMULAR RECOMENDACIÓN PRINCIPAL ---
+                    top_project = None
+                    highest_score = -1 # Usar -1 para asegurar que cualquier score numérico sea mayor
+
+                    # Iterar para encontrar el proyecto con el mayor score numérico
+                    for project in ranked_suggestions_data.get("suggested_projects", []):
+                        current_score = project.get("score")
+                        if isinstance(current_score, (int, float)): # Asegurarse que el score es numérico
+                            if current_score > highest_score:
+                                highest_score = current_score
+                                top_project = project
+                        else:
+                            print(f"Advertencia: Score no numérico para proyecto {project.get('name')}: {current_score}")
+                    
+                    if top_project:
+                        project_name = top_project.get("name", "un proyecto destacado")
+                        reason = top_project.get("reason", "sus características generales se alinean con tus comentarios")
+                        score_display = f"{highest_score}/10" if highest_score != -1 else "N/A"
+
+                        client_facing_recommendation_text = (
+                            f"Basado en nuestra conversación, el proyecto que parece encajar especialmente bien es **{project_name}**. "
+                            f"Creemos que te podría interesar mucho debido a que {reason.lower().rstrip('.')}."
+                            # f" Ha obtenido una puntuación de {score_display} en nuestro análisis de afinidad." # Opcional incluir score aquí
+                        )
+                        if highest_score != -1: # Solo añadir si hay un score válido
+                             client_facing_recommendation_text += f" Consideramos que tiene una alta afinidad contigo (Puntuación: {score_display})."
+                        print(f"🗣️ Recomendación principal (top project): {client_facing_recommendation_text}")
+                    else:
+                        client_facing_recommendation_text = "Hemos evaluado varios proyectos. Te invito a revisar el ranking detallado para ver las opciones que hemos identificado."
+                    # -------------------------------------------------------------------------
+
+                elif ranked_suggestions_data: # Hubo un error devuelto por la IA
+                     print(f"⚠️ Error de IA al generar ranking: {ranked_suggestions_data.get('error', 'Desconocido')}")
+                     # Opcional: emitir un mensaje de error al frontend
+                     socketio.emit("ranking_error", {"message": ranked_suggestions_data.get('error', 'Error generando ranking'), "raw": ranked_suggestions_data.get('raw', '')})
+                else: # No se recibió nada o hubo otro error
+                     print(f"⚠️ No se pudo generar el ranking.")
+                     socketio.emit("ranking_error", {"message": "No se pudo generar el ranking de proyectos."})
+                # ----------------------------------------------------
+
                 # Sugerencia
                 suggestion = recommendation_engine.generate_advice(emotion_result['emotion'], keywords, full_text)
                 print(f"📢 Sugerencia generada: {suggestion}")
                 socketio.emit("suggestion", {"text": suggestion})
                 manage_history_use_case.add_suggestion(current_client_id, current_call_name, suggestion)
+
+                # Emitir la recomendación principal (enfocada en el top project o mensaje de fallback)
+                # a la tarjeta de "Recomendación" original.
+                socketio.emit("suggestion", {"text": client_facing_recommendation_text})
 
                 emotion_word_buffer = emotion_word_buffer[MAX_EMOTION_WORDS:]
 
@@ -261,49 +322,66 @@ def obtener_proyectos():
 @app.route("/api/historial/<client_id>", methods=["GET"])
 @login_required
 def obtener_historial_cliente(client_id):
-    historial = get_history_use_case.get_client_history(client_id)
-    if historial:
-        data = historial.to_dict()
+    # Obtener historial en memoria (¡Ojo! Esto puede no ser lo último si el cliente se desconectó)
+    # Sería más robusto leer directamente de la BD si esa es la fuente de verdad.
+    # Asumamos que get_client_history recupera los datos más recientes que queremos guardar.
+    history = get_history_use_case.get_client_history(client_id)
+    if history:
+        data = history.to_dict() # Ahora contiene 'ranked_suggestions'
 
+        conn = None # Mover la conexión aquí para asegurar cierre
         try:
             conn = sqlite3.connect("data/inmuebles.db")
             c = conn.cursor()
 
-            for call_name, call_data in data["calls"].items():
+            print(f"💾 Intentando guardar/actualizar historial para cliente: {client_id}")
+
+            for call_name, call_data in data.get("calls", {}).items():
                 # Verificar si ya existe el registro
                 c.execute('''
                     SELECT id FROM historial WHERE client_id = ? AND call_name = ?
                 ''', (data["client_id"], call_name))
                 existing = c.fetchone()
 
+                # Serializar todos los campos necesarios a JSON
                 transcriptions = json.dumps(call_data.get("transcriptions", []))
                 emotions = json.dumps(call_data.get("emotions", []))
-                suggestions = json.dumps(call_data.get("suggestions", []))
+                suggestions = json.dumps(call_data.get("suggestions", [])) # Sugerencia original
+                # Serializar el nuevo campo
+                ranked_suggestions_json = json.dumps(call_data.get("ranked_suggestions", [])) # <--- NUEVO
 
                 if existing:
-                    # Si existe, actualizar
+                    # Si existe, actualizar (incluir el nuevo campo)
                     print(f"📝 Actualizando historial de '{call_name}' para '{data['client_id']}'")
                     c.execute('''
                         UPDATE historial
-                        SET transcriptions = ?, emotions = ?, suggestions = ?
+                        SET transcriptions = ?, emotions = ?, suggestions = ?, ranked_suggestions = ?
                         WHERE id = ?
-                    ''', (transcriptions, emotions, suggestions, existing[0]))
+                    ''', (transcriptions, emotions, suggestions, ranked_suggestions_json, existing[0])) # <--- AÑADIR ranked_suggestions_json
                 else:
-                    # Si no existe, insertar
+                    # Si no existe, insertar (incluir el nuevo campo)
                     print(f"➕ Insertando nueva llamada '{call_name}' para '{data['client_id']}'")
                     c.execute('''
-                        INSERT INTO historial (client_id, call_name, transcriptions, emotions, suggestions)
-                        VALUES (?, ?, ?, ?, ?)
-                    ''', (data["client_id"], call_name, transcriptions, emotions, suggestions))
+                        INSERT INTO historial (client_id, call_name, transcriptions, emotions, suggestions, ranked_suggestions)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (data["client_id"], call_name, transcriptions, emotions, suggestions, ranked_suggestions_json)) # <--- AÑADIR ranked_suggestions_json
 
             conn.commit()
-            conn.close()
+            print(f"✅ Historial guardado/actualizado correctamente para {client_id}")
         except sqlite3.Error as e:
-            print(f"Error guardando historial en la BD: {e}")
+            print(f"❌ Error guardando historial en la BD para {client_id}: {e}")
+            if conn:
+                 conn.rollback() # Deshacer cambios si hubo error
+            # Considera devolver un error 500 aquí si el guardado falla
+            # return jsonify({"error": "Error al guardar historial"}), 500
+        finally:
+            if conn:
+                conn.close()
 
+        # Devolver los datos (posiblemente actualizados en memoria, no necesariamente lo de la BD)
         return jsonify(data)
     else:
-        return jsonify({"message": "No se encontró historial."}), 404
+        return jsonify({"message": f"No se encontró historial en memoria para {client_id}."}), 404
 
 # --- SOCKET.IO EVENTOS ---
 

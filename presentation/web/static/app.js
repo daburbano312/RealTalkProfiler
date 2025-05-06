@@ -12,6 +12,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const suggestionOutputP = document.getElementById('suggestionOutput');
     const suggestionSpinner = document.getElementById('suggestionSpinner');
 
+    // **** NUEVOS SELECTORES PARA EL RANKING ****
+    const rankedSuggestionsOutput = document.getElementById('rankedSuggestionsOutput');
+    const rankingSpinner = document.getElementById('rankingSpinner');
+    const rankingErrorOutput = document.getElementById('rankingErrorOutput');
+    // *******************************************
+
     // --- Estado de la aplicación ---
     let isRecording = false;
     let isConnected = false;
@@ -107,17 +113,87 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('suggestion', (data) => {
-        if (suggestionOutputP) {
-            suggestionOutputP.textContent = data.text || 'No se pudo generar sugerencia.';
-            suggestionOutputP.classList.remove('output-placeholder');
+        suggestionSpinner.style.display = 'none'; 
+        if (data.text) {
+            // Reemplazar **texto** con <strong>texto</strong>
+            let formattedText = data.text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            suggestionOutput.innerHTML = formattedText; // Usar innerHTML
+        } else {
+            suggestionOutput.textContent = 'No se generó sugerencia.';
         }
-        if (suggestionSpinner) suggestionSpinner.style.display = 'none';
     });
 
-    socket.on('generating_suggestion', () => {
-        if (suggestionOutputP) suggestionOutputP.textContent = 'Generando recomendación...';
-        if (suggestionSpinner) suggestionSpinner.style.display = 'inline-block';
+    // **** NUEVO LISTENER PARA EL RANKING DE PROYECTOS ****
+    socket.on('ranked_suggestions', (data) => {
+        console.log("Received ranked suggestions:", data);
+        rankingSpinner.style.display = 'none'; // Ocultar spinner de ranking
+        rankingErrorOutput.style.display = 'none'; // Ocultar mensajes de error previos
+        rankedSuggestionsOutput.innerHTML = ''; // Limpiar contenido anterior
+        rankedSuggestionsOutput.classList.remove('output-placeholder');
+
+        if (data && data.suggested_projects && data.suggested_projects.length > 0) {
+            const list = document.createElement('ol'); // Usar lista ordenada
+            list.classList.add('ranked-list'); // Clase para estilos opcionales
+
+            data.suggested_projects.forEach(project => {
+                const item = document.createElement('li');
+                item.classList.add('ranked-item'); // Clase para estilos opcionales
+
+                // Crear contenido del item
+                const nameEl = document.createElement('strong');
+                nameEl.textContent = project.name || 'Proyecto sin nombre';
+
+                const scoreEl = document.createElement('span');
+                scoreEl.textContent = ` (Puntaje: ${project.score || 'N/A'})`;
+                scoreEl.style.fontWeight = 'normal'; // Estilo opcional
+
+                const reasonEl = document.createElement('p');
+                reasonEl.textContent = project.reason || 'Sin justificación.';
+                reasonEl.style.fontSize = '0.9em'; // Estilo opcional
+                reasonEl.style.marginLeft = '10px'; // Estilo opcional
+                reasonEl.style.marginTop = '4px'; // Estilo opcional
+
+                item.appendChild(nameEl);
+                item.appendChild(scoreEl);
+                item.appendChild(reasonEl);
+
+                // Opcional: Añadir enlace o botón para ver detalles
+                 const detailsButton = document.createElement('button');
+                 detailsButton.textContent = 'Ver Detalles';
+                 detailsButton.classList.add('btn', 'btn-details', 'btn-small'); // Clases de botón
+                 detailsButton.style.marginLeft = '10px';
+                 detailsButton.onclick = () => {
+                     // Aquí puedes redirigir a la página de proyectos con un filtro,
+                     // o mostrar un modal con la información completa del proyecto.
+                     // Por ahora, un simple alert:
+                     alert(`Detalles (placeholder):\nID: ${project.project_id}\nNombre: ${project.name}\nScore: ${project.score}`);
+                     // Podrías hacer fetch a /api/proyectos/{project.project_id} si tuvieras esa ruta
+                 };
+                 //item.appendChild(detailsButton);
+
+
+                list.appendChild(item);
+            });
+            rankedSuggestionsOutput.appendChild(list);
+        } else {
+            rankedSuggestionsOutput.textContent = 'No se sugirieron proyectos específicos.';
+            rankedSuggestionsOutput.classList.add('output-placeholder');
+        }
     });
+
+    // **** NUEVO LISTENER PARA ERRORES DE RANKING ****
+     socket.on('ranking_error', (data) => {
+         rankingSpinner.style.display = 'none'; // Ocultar spinner
+         rankedSuggestionsOutput.innerHTML = ''; // Limpiar si había algo
+         rankedSuggestionsOutput.classList.add('output-placeholder');
+         rankedSuggestionsOutput.textContent = 'Error al obtener ranking.'; // Placeholder
+         rankingErrorOutput.textContent = `Error: ${data.message || 'Error desconocido al generar ranking.'}`;
+         rankingErrorOutput.style.display = 'block'; // Mostrar el mensaje de error
+         console.error("Ranking Error:", data);
+         if (data.raw) {
+             console.error("Raw AI response:", data.raw);
+         }
+     });
 
     // --- Eventos de los Botones ---
     if (btnStart) {
