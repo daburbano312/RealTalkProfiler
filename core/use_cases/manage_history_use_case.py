@@ -1,3 +1,4 @@
+# core/use_cases/manage_history_use_case.py
 from core.entities.conversation_history import ConversationHistory
 
 class ManageHistoryUseCase:
@@ -16,9 +17,13 @@ class ManageHistoryUseCase:
         history = self.history_repository.get_or_create_history(client_id)
         history.add_emotion(call_name, emotion, score)
 
-    def add_suggestion(self, client_id, call_name, suggestion):
+    def add_suggestion(self, client_id, call_name, suggestion): # Mantener si aún se usa
         history = self.history_repository.get_or_create_history(client_id)
         history.add_suggestion(call_name, suggestion)
+
+    def add_ranked_suggestion(self, client_id, call_name, ranked_data): # <--- NUEVO MÉTODO
+        history = self.history_repository.get_or_create_history(client_id)
+        history.add_ranked_suggestion(call_name, ranked_data) # Llama al método de la entidad
 
     def get_client_history(self, client_id):
         return self.history_repository.get_history(client_id)
