@@ -1,0 +1,2 @@
+Test,Estado,Tiempo de Ejecución (segundos),Mensaje
+Prueba de CSRF,Fallo,9.436647653579712,La aplicación es vulnerable a CSRF.
