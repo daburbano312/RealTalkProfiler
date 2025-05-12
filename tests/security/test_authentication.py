@@ -32,9 +32,7 @@ def test_authentication():
     start_time = time.time()  # Inicio del cronómetro
 
     try:
-        driver.get("http://localhost:5000/login")  # URL protegida
-        
-        # Esperar la redirección a la página de inicio de sesión
+        driver.get("http://localhost:5000/login")
         login_page = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.ID, "remember"))  # Asegúrate de que este selector sea correcto
         )
